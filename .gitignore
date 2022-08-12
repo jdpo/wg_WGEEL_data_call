@@ -2,5 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
+data_master.RData
 /data
 /output
