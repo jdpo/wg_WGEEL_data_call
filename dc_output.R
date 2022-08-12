@@ -7,10 +7,19 @@
 # Author: Jan-Dag Pohlmann
 # Date: 11.08.2022
 
+# Provide a general comment for grouped data of "DCF" series
+DCF_group_comment <- "Not necessarily representative for EMU, summarizes all landings sub-samples from single or multiple fishermen in this EMU, which are considered representative of these catches. Hence, quality data does not comprise all available quality data in this EMU, these are reported in seperate (QUAL) series"
+
+# Provide a general comment for grouped data of "QUAL" series
+QUAL_group_comment <- "Not necessarily representative for EMU, summarizes data of all eels sampled for the respective quality indicator within the DCF in the respective year. Samples were likely selected due to pre-defined criteria (e.g. large silver eels), depending on the intention of sampling"
+
+#provide a general comment for individual data
+IND_comment <- "Date is not exact and refers to the landing date. Day was always (even if exact date is known) set to 15 for consistency, since most eels are fished and collected over a period of many days and sometimes across a month boundary. In the latter case, the first of the two month is given. Pb and Cd values are provided for dw!"
+
 #---------------------- 1. load/install libraries ----------------------------#
 
 # define libraries needed
-libs <- c("tidyverse", "stringr") 
+libs <- c("tidyverse") 
 
 # define libraries already installed
 installed_libs <- libs %in% rownames(installed.packages())
@@ -32,11 +41,11 @@ col_names <- readLines("data/col_names.csv")
 col_names_full <- readLines("data/col_names_full.csv")
 
 # replace all excel errror messages with
-data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("#WERT!", "#NV", "", "#BEZUG!"), NA)))
+data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("#WERT!", "#NV", "", "#BEZUG!", "-"), NA)))
                             
                             
 # prepare a reduced 
-data_processed <- data %>%  
+data_processed <- data %>%
   rename(ID = "Lfd..Nr.",
          fge = "FGE",
          year = "Fangjahr",
@@ -48,8 +57,7 @@ data_processed <- data %>%
          sex = "Sex",
          age_year = "Age..y.",
          muscle_lipid_fatmeter_perc = "Fett....Fatmeter.Eel.1..ggf..korrigiert..aus.eel.2...",
-         fat_mus_tot = "Fett....Labor.",
-         fat_mus_an = "Fett....hinter.Anus.",
+         muscle_lipid_gravimeter_perc = "Fett....Labor.",
          teq = "PCB...pg.TEQ.g.ww.",
          pectoral_length_mm = "Brustfl....mm.",
          anguillicola_intensity = "Anguillicola.cr...n.gesamt.",
@@ -63,7 +71,7 @@ data_processed <- data %>%
          fi_date = as.Date(paste(year, month, "15",  sep = "-")),
          fi_lfs_code = ifelse(is.na(stage), NA, 
                               ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
-         fi_comment = paste(ID, "Date is not exact and refer to the landing date. Day was always (even if exact date is known) set to 15 for consistency, since most eels are fished and collected over a period of many days and sometimes across a month boundary. In the latter case, the first of the two month is given. Pb and Cd values are provided for dw!", sep = "_"),
+         fi_comment = paste(ID, IND_comment, sep = "_"),
          fi_last_update = NA,
          fi_dts_datasource = NA,
          fisa_x_4326 = NA,
@@ -71,30 +79,28 @@ data_processed <- data %>%
          length_mm = as.numeric(length_mm),
          weight_g = as.numeric(weight_g),
          age_year = as.numeric(age_year),
-         f_m = ifelse(is.na(stage), NA,
-                        ifelse(stage == 4 | stage == 5, 1,
-                          ifelse(stage == 6, 0,
-                            ifelse(is.na(sex), NA,
-                             ifelse(sex == "m", 0, 
-                              ifelse( sex == "f", 1, NA)))))),
+         f_m = ifelse(!is.na(stage), 
+                      ifelse(stage == 4 | stage == 5, 1,
+                        ifelse(stage == 6, 0,
+                          ifelse(!is.na(sex), 
+                            ifelse(sex == "m", 0, 
+                              ifelse(sex == "f", 1, NA)), NA))), NA),
          diff = ifelse(is.na(sex), NA,
-                                                                            ifelse(sex == "m" | sex == "f", 1, 
-                                                                                   ifelse(sex == "u", 0, NA))),
+                  ifelse(sex == "m" | sex == "f", 1, 
+                    ifelse(sex == "u", 0, NA))),
          an_pre = ifelse(is.na(anguillicola_intensity), NA, 
-                                                              ifelse(anguillicola_intensity < 0, 0, 1)),
-         
-         muscle_lipid_gravimeter_perc = ifelse(is.na(fat_mus_tot) & is.na(fat_mus_an), NA,
-                                             ifelse(is.na(fat_mus_an), fat_mus_an, fat_mus_tot)),
+                    ifelse(anguillicola_intensity > 0, 1, 0)),
          sum_6_pcb = NA,
          teq = as.numeric(ifelse(is.na(teq), NA, teq)),
          ev_pre = NA,
-         hva_pre = NA) %>% 
-  select(col_names_full)
+         hva_pre = NA,
+         hg = as.numeric(hg)) %>% 
+  select(all_of(col_names_full))
 
 
 
 
-#------------------------- 3. CREATE sampling_info & summary biometry --------------------------#
+#------------------------- 3. CREATE INDIVIDUAL DATA FOR BIOMETRY GROUPS --------------------------#
 
 data_biometry <- data_processed %>% 
   filter(is.na(rep) | rep == 1,
@@ -103,28 +109,12 @@ data_biometry <- data_processed %>%
   mutate(sai_name =  paste(sai_emu_nameshort, series, "DCF", fi_lfs_code, sep = "_"))
 
 data_biometry <- data_biometry[order(data_biometry$sai_name, data_biometry$year),]
-
-data_biometry_summary <- data_biometry %>% 
-  group_by(sai_name, year) %>% 
-  summarize(sai_name = unique(sai_name),
-            sai_emu_nameshort = unique(sai_emu_nameshort),
-            gr_year = unique(year),
-            grsa_lfs_code = unique(fi_lfs_code),
-            gr_number = n(),
-            gr_comment = "",
-            gr_last_update = "",
-            gr_dts_datasource = "",
-            length_mm = mean(length_mm),
-            weight_g = mean(weight_g),
-            age_year = mean(age_year),
-            female_proportion = length(f_m[which(f_m == 1)])/length(f_m[which(!is.na(f_m))]))
-
-
-            
+#data_biometry$no <- 1:nrow(data_biometry)
 
 
 
-#------------------------ 4. CREATE sampling_info & summary quality ---------------------------# 
+
+#------------------------ 4. CREATE INDIVIDUAL DATA FOR QUALITY GROUPS ---------------------------# 
 
 data_teq <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
@@ -151,3 +141,66 @@ data_cd <- data_processed %>%
   mutate(sai_name =  paste(sai_emu_nameshort, "QUAL", "cd", fi_lfs_code, sep = "_"))
 
 data_quality <- rbind(data_teq, data_hg, data_pb, data_cd)
+data_quality <- data_quality[order(data_quality$sai_name, data_quality$year),]
+
+
+
+
+#------------------------- 5. COMBINE INDIVIDUAL DATA AND CREATE GROUP DATA FOR OUTPUT -------------------------#
+
+data_individual_full <- rbind(data_biometry, data_quality)
+
+data_grouped <- data_individual_full %>%
+  mutate(length_f = ifelse(f_m == 1, length_mm, NA),
+         weight_f = ifelse(f_m == 1, weight_g, NA),
+         age_f = ifelse(f_m == 1, age_year, NA),
+         length_m = ifelse(f_m == 0, length_mm, NA),
+         weight_m = ifelse(f_m == 0, weight_g, NA),
+         age_m = ifelse(f_m == 0, age_year, NA)) %>% 
+  group_by(sai_name, year) %>% 
+  summarise(sai_name = unique(sai_name),
+            sai_emu_nameshort = unique(sai_emu_nameshort),
+            gr_year = unique(year),
+            grsa_lfs_code = unique(fi_lfs_code),
+            gr_number = n(),
+            gr_comment = ifelse(grepl("DCF", sai_name), DCF_group_comment , 
+                                ifelse(grepl("QUAL", sai_name), QUAL_group_comment , NA)),
+            gr_last_update = "",
+            gr_dts_datasource = "",
+            length_mm = mean(length_mm, na.rm = T),
+            weight_g = mean(weight_g, na.rm = T),
+            age_year = mean(age_year, na.rm = T),
+            female_proportion = length(f_m[which(f_m == 1)])/length(f_m[which(!is.na(f_m))]),
+            differentiated_proportion = length(diff[which(diff == 1)])/length(diff[which(!is.na(diff))]),
+            f_mean_length_mm = mean(length_f, na.rm = T), #WHY IS "mean(length_mm[fm == "1"], na.rm = T)" not working!?!?
+            f_mean_weight_g = mean(weight_f, na.rm = T),
+            f_mean_age_year = mean(age_f, na.rm = T),
+            m_mean_length_mm = mean(length_m, na.rm = T),
+            m_mean_weight_g = mean(weight_m, na.rm = T),
+            m_mean_age_year = mean(age_m, na.rm = T),
+            anguillicola_proportion = length(an_pre[which(an_pre == 1)])/length(an_pre[which(!is.na(an_pre))]),
+            anguillicola_intensity = mean(an_pre, na.rm = T),
+            muscle_lipid_fatmeter_perc = mean(muscle_lipid_fatmeter_perc, na.rm = T),
+            muscle_lipid_gravimeter_perc = mean(muscle_lipid_gravimeter_perc, na.rm = T),
+            sum_6_pcb = mean(sum_6_pcb, na.rm = T),
+            teq = mean(teq, na.rm = T),
+            evex_proportion = length(ev_pre[which(ev_pre == 1)])/length(ev_pre[which(!is.na(ev_pre))]),
+            hva_proportion = length(hva_pre[which(hva_pre == 1)])/length(hva_pre[which(!is.na(hva_pre))]),
+            pb = mean(pb, na.rm = T),
+            hg = mean(hg, na.rm = T),
+            cd = mean(cd, na.rm = T),
+            g_in_gy_proportion = NA,
+            s_in_ys_proportion = NA
+            ) 
+
+data_individual <- data_individual_full %>%
+  rename("is_female_(1=female,0=male)" = f_m,
+         "is_differentiated_(1=differentiated,0_undifferentiated)" = diff,
+         "anguillicola_presence(1=present,0=absent)" = an_pre,
+         "evex_presence_(1=present,0=absent)" = ev_pre,
+         "hva_presence_(1=present,0=absent)" = hva_pre) %>% 
+  select(all_of(col_names))
+
+
+write.table(data_individual, file = "output/2022_data_individual.csv", row.names = FALSE, sep = ";")
+write.table(data_grouped, file = "output/2022_data_grouped.csv", row.names = FALSE, sep = ";")
