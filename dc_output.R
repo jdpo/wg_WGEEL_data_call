@@ -7,6 +7,9 @@
 # Author: Jan-Dag Pohlmann
 # Date: 11.08.2022
 
+
+#--------------------- 1. PROVIDE GENERAL COMMENTS -------------------------#
+
 # Provide a general comment for grouped data of "DCF" series
 DCF_group_comment <- "Not necessarily representative for EMU, summarizes all landings sub-samples from single or multiple fishermen in this EMU, which are considered representative of these catches. Hence, quality data does not comprise all available quality data in this EMU, these are reported in seperate (QUAL) series"
 
@@ -16,7 +19,10 @@ QUAL_group_comment <- "Not necessarily representative for EMU, summarizes data o
 #provide a general comment for individual data
 IND_comment <- "Date is not exact and refers to the landing date. Day was always (even if exact date is known) set to 15 for consistency, since most eels are fished and collected over a period of many days and sometimes across a month boundary. In the latter case, the first of the two month is given. Pb and Cd values are provided for dw!"
 
-#---------------------- 1. load/install libraries ----------------------------#
+
+
+
+#---------------------- 2. load/install libraries ----------------------------#
 
 # define libraries needed
 libs <- c("tidyverse") 
@@ -33,18 +39,25 @@ if (any(installed_libs == F)) {
 invisible(lapply(libs, library, character.only = T))
 
 
-#-------------------- 2. PROCESS INDIVIDUAL DATA -------------------# 
 
-# read master
-data <- read.csv("data/2022_08_11_Aal_DCF.csv", header = T, sep  = ";")
-col_names <- readLines("data/col_names.csv")
-col_names_full <- readLines("data/col_names_full.csv")
 
-# replace all excel errror messages with
+#-------------------- 3. PROCESS INDIVIDUAL DATA -------------------# 
+
+# read master and vectors vectors with column names (original code for reading csv's included for documentation 
+# and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
+# output but used during processing)
+load("data_master.RData")
+
+#data <- read.csv("data/2022_08_11_Aal_DCF.csv", header = T, sep  = ";")
+#col_names <- readLines("data/col_names.csv")
+#col_names_full <- readLines("data/col_names_full.csv")
+
+
+# replace all excel error messages and placeholders for NA with NA
 data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("#WERT!", "#NV", "", "#BEZUG!", "-"), NA)))
+
                             
-                            
-# prepare a reduced 
+# edit the original data to ease programming (horrible headers!)
 data_processed <- data %>%
   rename(ID = "Lfd..Nr.",
          fge = "FGE",
@@ -70,7 +83,7 @@ data_processed <- data %>%
          sai_emu_nameshort = ifelse(is.na(fge), NA, paste("DE", substr(fge, 1, 4), sep = "_")),
          fi_date = as.Date(paste(year, month, "15",  sep = "-")),
          fi_lfs_code = ifelse(is.na(stage), NA, 
-                              ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
+                         ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
          fi_comment = paste(ID, IND_comment, sep = "_"),
          fi_last_update = NA,
          fi_dts_datasource = NA,
@@ -100,22 +113,27 @@ data_processed <- data %>%
 
 
 
-#------------------------- 3. CREATE INDIVIDUAL DATA FOR BIOMETRY GROUPS --------------------------#
+#-------------------- 3. PREPARE INDIVIDUAL BIOMETRY DATA -------------------# 
 
+# filter data for use of biometric data
 data_biometry <- data_processed %>% 
   filter(is.na(rep) | rep == 1,
          !is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, series, "DCF", fi_lfs_code, sep = "_"))
 
+
+# order biometry dataframe and add a number (not necessary, but useful for checks during programming)
 data_biometry <- data_biometry[order(data_biometry$sai_name, data_biometry$year),]
-#data_biometry$no <- 1:nrow(data_biometry)
+data_biometry$no <- 1:nrow(data_biometry)
 
 
 
 
-#------------------------ 4. CREATE INDIVIDUAL DATA FOR QUALITY GROUPS ---------------------------# 
+#-------------------- 4. PREPARE INDIVIDUAL QUALITY DATA -------------------#
 
+# filter data for use of quality data and create seperate data frames for each 
+# available quality indicator (to produce seperate series per indicator)
 data_teq <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
@@ -140,16 +158,26 @@ data_cd <- data_processed %>%
          !is.na(cd)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, "QUAL", "cd", fi_lfs_code, sep = "_"))
 
+
+# combine seperate quality data frames
 data_quality <- rbind(data_teq, data_hg, data_pb, data_cd)
+
+
+# order quality dataframe and add a number (not necessary, but useful for checks during 
+# programming and to be consistent with biometry data frame)
 data_quality <- data_quality[order(data_quality$sai_name, data_quality$year),]
+data_quality$no <- 1:nrow(data_quality)
 
 
 
 
 #------------------------- 5. COMBINE INDIVIDUAL DATA AND CREATE GROUP DATA FOR OUTPUT -------------------------#
 
+# combine all individual biometry and quality data (several individuals 
+# may occur in several series, with a seperate line for each series)
 data_individual_full <- rbind(data_biometry, data_quality)
 
+# summarize individual data to generate output for grouped data
 data_grouped <- data_individual_full %>%
   mutate(length_f = ifelse(f_m == 1, length_mm, NA),
          weight_f = ifelse(f_m == 1, weight_g, NA),
@@ -190,9 +218,16 @@ data_grouped <- data_individual_full %>%
             hg = mean(hg, na.rm = T),
             cd = mean(cd, na.rm = T),
             g_in_gy_proportion = NA,
-            s_in_ys_proportion = NA
-            ) 
+            s_in_ys_proportion = NA) 
 
+
+
+
+#------------------------- 6. CLEAN UP, WRITE CSV FILES AND STORE AN RDATA -------------------------#
+
+# clean environment
+
+# rename some columns in individual data to be consistent with data call spreadsheet and remove additional columns 
 data_individual <- data_individual_full %>%
   rename("is_female_(1=female,0=male)" = f_m,
          "is_differentiated_(1=differentiated,0_undifferentiated)" = diff,
