@@ -13,14 +13,23 @@
 # Provide a general comment for grouped data of "DCF" series
 DCF_group_comment <- "Not necessarily representative for EMU, summarizes all landings sub-samples from single or multiple fishermen in this EMU, which are considered representative of these catches. Hence, quality data does not comprise all available quality data in this EMU, these are reported in seperate (QUAL) series"
 
+# Provide a general comment for BALANCE grouped data
+BALANCE_group_comment <- "Data generally considered representative for stow net catches near the estuary, but at the time of reporting was incomplete"
+
 # Provide a general comment for grouped data of "QUAL" series
 QUAL_group_comment <- "Not necessarily representative for EMU, summarizes data of all eels sampled for the respective quality indicator within the DCF in the respective year. Samples were likely selected due to pre-defined criteria (e.g. large silver eels), depending on the intention of sampling"
 
 #provide a general comment for individual data
 IND_comment <- "Date is not exact and refers to the landing date. Day was always (even if exact date is known) set to 15 for consistency, since most eels are fished and collected over a period of many days and sometimes across a month boundary. In the latter case, the first of the two month is given. Pb and Cd values are provided for dw!"
 
+# provide a comments for sai_info (sai_protocol) if it's a DCF biometry series
+DCF_info_protocol <- "sampling of commercial fisheries (gear may vary but usually comprises small/large fykes and/or stow nets); catches are considered non-seklective above 45cm."
 
+# provide a comments for sai_info (sai_protocol) if it's a QUAL series
+QUAL_info_protocol <- "Samples usually from commercial fisheries but can include samples from non-representative catches (i.e. qual series provide all avbailable quality data, DCF series provide all data considered representative for catches which may include all or parts of qual data)."
 
+# provide a comments for sai_info (sai_protocol) if it's BALANCE data
+BALANCE_info_protocol <- "All samples are collected from a stow net near the estuary year round. Samples are restricted to few years though (not complete and therefore not representative yet), as they are/were taken as part of the BALANCE project."
 
 #---------------------- 2. load/install libraries ----------------------------#
 
@@ -43,7 +52,7 @@ invisible(lapply(libs, library, character.only = T))
 
 #-------------------- 3. PROCESS INDIVIDUAL DATA -------------------# 
 
-# read master and vectors vectors with column names (original code for reading csv's included for documentation 
+# read master and vectors with column names (original code for reading csv's included for documentation 
 # and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
 # output but used during processing)
 load("data_master.RData")
@@ -61,6 +70,7 @@ data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("#WERT!", "#NV
 data_processed <- data %>%
   rename(ID = "Lfd..Nr.",
          fge = "FGE",
+         habitat = "Habitat",
          year = "Fangjahr",
          month = "Fangmonat",
          length_mm = "Length..mm...corrected",
@@ -74,13 +84,15 @@ data_processed <- data %>%
          teq = "PCB...pg.TEQ.g.ww.",
          pectoral_length_mm = "Brustfl....mm.",
          anguillicola_intensity = "Anguillicola.cr...n.gesamt.",
-         pb = "Pb.Muskel..Âµg.kg.dw.",
-         hg = "Quecksilber.Muskel..Âµg.kg.ww.",
-         cd = "Cd.Muskel..Âµg.kg.dw.",
+         pb = "Pb.Muskel..µg.kg.dw.",
+         hg = "Quecksilber.Muskel..µg.kg.ww.",
+         cd = "Cd.Muskel..µg.kg.dw.",
          rep = "representative") %>% 
   mutate(fi_id = NA,
          sai_name = NA,
          sai_emu_nameshort = ifelse(is.na(fge), NA, paste("DE", substr(fge, 1, 4), sep = "_")),
+         habitat = ifelse(is.na(habitat), NA,
+                    ifelse(habitat == "R" | habitat == "L", "F", habitat)),
          fi_date = as.Date(paste(year, month, "15",  sep = "-")),
          fi_lfs_code = ifelse(is.na(stage), NA, 
                          ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
@@ -108,7 +120,7 @@ data_processed <- data %>%
          ev_pre = NA,
          hva_pre = NA,
          hg = as.numeric(hg)) %>% 
-  select(all_of(col_names_full))
+  select(all_of(col_names_full), habitat)
 
 
 
@@ -120,7 +132,7 @@ data_biometry <- data_processed %>%
   filter(is.na(rep) | rep == 1,
          !is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code)) %>% 
-  mutate(sai_name =  paste(sai_emu_nameshort, series, "DCF", fi_lfs_code, sep = "_"))
+  mutate(sai_name =  paste(sai_emu_nameshort, series, "DCF", habitat, fi_lfs_code, sep = "_")) 
 
 
 # order biometry dataframe and add a number (not necessary, but useful for checks during programming)
@@ -138,25 +150,25 @@ data_teq <- data_processed %>%
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
          !is.na(teq)) %>% 
-  mutate(sai_name =  paste(sai_emu_nameshort, "QUAL", "teq", fi_lfs_code, sep = "_"))
+  mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "teq", habitat, fi_lfs_code, sep = "_"))
 
 data_hg <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
          !is.na(hg)) %>% 
-  mutate(sai_name =  paste(sai_emu_nameshort, "QUAL", "hg", fi_lfs_code, sep = "_"))
+  mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "hg", habitat, fi_lfs_code, sep = "_"))
 
 data_pb <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
          !is.na(pb)) %>% 
-  mutate(sai_name =  paste(sai_emu_nameshort, "QUAL", "pb", fi_lfs_code, sep = "_"))
+  mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "pb", habitat, fi_lfs_code, sep = "_"))
 
 data_cd <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
          !is.na(cd)) %>% 
-  mutate(sai_name =  paste(sai_emu_nameshort, "QUAL", "cd", fi_lfs_code, sep = "_"))
+  mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "cd", habitat, fi_lfs_code, sep = "_"))
 
 
 # combine seperate quality data frames
@@ -191,10 +203,6 @@ data_grouped <- data_individual_full %>%
             gr_year = unique(year),
             grsa_lfs_code = unique(fi_lfs_code),
             gr_number = n(),
-            gr_comment = ifelse(grepl("DCF", sai_name), DCF_group_comment , 
-                                ifelse(grepl("QUAL", sai_name), QUAL_group_comment , NA)),
-            gr_last_update = "",
-            gr_dts_datasource = "",
             length_mm = mean(length_mm, na.rm = T),
             weight_g = mean(weight_g, na.rm = T),
             age_year = mean(age_year, na.rm = T),
@@ -218,9 +226,41 @@ data_grouped <- data_individual_full %>%
             hg = mean(hg, na.rm = T),
             cd = mean(cd, na.rm = T),
             g_in_gy_proportion = NA,
-            s_in_ys_proportion = NA) 
+            s_in_ys_proportion = NA,
+            habitat = unique(habitat),
+            gr_comment = ifelse(grepl("QUAL", sai_name), QUAL_group_comment,
+                                ifelse(grepl("BALANCE", sai_name), BALANCE_group_comment,
+                                       ifelse(grepl("DCF", sai_name), DCF_group_comment, NA)))) 
 
 
+# create sai_info
+sai_info <- data_grouped %>% 
+  group_by(sai_name) %>% 
+  mutate(max = max(gr_year),
+         min = min (gr_year),
+         sai_area_division = ifelse(is.na(sai_emu_nameshort), NA, 
+                                    ifelse(sai_emu_nameshort == "DE_Elbe" | sai_emu_nameshort == "DE_Ems"| sai_emu_nameshort == "DE_Eide"| sai_emu_nameshort == "DE_Rhei"| sai_emu_nameshort == "DE_Wese", "27.4.b",
+                                    ifelse(sai_emu_nameshort == "DE Oder" | sai_emu_nameshort == "DE_Warn", "27.3.d",
+                                           ifelse(sai_emu_nameshort == "DE_Schl", "27.3.b,c", NA)))),
+         habitat = unique(habitat)) %>% 
+  summarise(sai_name = unique(sai_name),
+            sai_emu_nameshort = unique(sai_emu_nameshort),
+            sai_year = unique(min),
+            max = unique(max),
+            sai_area_division = unique(sai_area_division),
+            sai_hty_code = unique(habitat),
+            sai_sampling_objective = "DCF",
+            sai_samplingstrategy = "commercial fisheries",
+            sai_protocol = ifelse(grepl("QUAL", sai_name), QUAL_info_protocol,
+                                  ifelse(grepl("BALANCE", sai_name), BALANCE_info_protocol,
+                                         ifelse(grepl("DCF", sai_name), DCF_info_protocol, NA))),
+            sai_qal_id = "",
+            sai_comment = ifelse(grepl("QUAL", sai_name), QUAL_group_comment,
+                                 ifelse(grepl("BALANCE", sai_name), BALANCE_group_comment,
+                                        ifelse(grepl("DCF", sai_name), DCF_group_comment, NA)))) %>% 
+  mutate(sai_year = ifelse(sai_year == max, sai_year, paste(sai_year, max, sep ="-"))) %>% 
+  select(-max)
+            
 
 
 #------------------------- 6. CLEAN UP, WRITE CSV FILES AND STORE AN RDATA -------------------------#
@@ -236,6 +276,11 @@ data_individual <- data_individual_full %>%
          "hva_presence_(1=present,0=absent)" = hva_pre) %>% 
   select(all_of(col_names))
 
+# remove habitat column from grouped data
+data_grouped <- data_grouped %>% 
+  select(-habitat, -year)
+
 
 write.table(data_individual, file = "output/2022_data_individual.csv", row.names = FALSE, sep = ";")
 write.table(data_grouped, file = "output/2022_data_grouped.csv", row.names = FALSE, sep = ";")
+write.table(sai_info, file = "output/2022_sai_info.csv", row.names = FALSE, sep = ";")
