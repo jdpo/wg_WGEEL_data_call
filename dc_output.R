@@ -84,15 +84,16 @@ data_processed <- data %>%
          teq = "PCB...pg.TEQ.g.ww.",
          pectoral_length_mm = "Brustfl....mm.",
          anguillicola_intensity = "Anguillicola.cr...n.gesamt.",
-         pb = "Pb.Muskel..µg.kg.dw.",
-         hg = "Quecksilber.Muskel..µg.kg.ww.",
-         cd = "Cd.Muskel..µg.kg.dw.",
+         pb = "Pb.Muskel..Âµg.kg.dw.",
+         hg = "Quecksilber.Muskel..Âµg.kg.ww.",
+         cd = "Cd.Muskel..Âµg.kg.dw.",
          rep = "representative") %>% 
   mutate(fi_id = NA,
          sai_name = NA,
          sai_emu_nameshort = ifelse(is.na(fge), NA, paste("DE", substr(fge, 1, 4), sep = "_")),
          habitat = ifelse(is.na(habitat), NA,
-                    ifelse(habitat == "R" | habitat == "L", "F", habitat)),
+                    ifelse(habitat == "R" | habitat == "L" | habitat == "F", "F",
+                           ifelse(habitat == "M", "MO", habitat))),
          fi_date = as.Date(paste(year, month, "15",  sep = "-")),
          fi_lfs_code = ifelse(is.na(stage), NA, 
                          ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
@@ -240,7 +241,7 @@ sai_info <- data_grouped %>%
          min = min (gr_year),
          sai_area_division = ifelse(is.na(sai_emu_nameshort), NA, 
                                     ifelse(sai_emu_nameshort == "DE_Elbe" | sai_emu_nameshort == "DE_Ems"| sai_emu_nameshort == "DE_Eide"| sai_emu_nameshort == "DE_Rhei"| sai_emu_nameshort == "DE_Wese", "27.4.b",
-                                    ifelse(sai_emu_nameshort == "DE Oder" | sai_emu_nameshort == "DE_Warn", "27.3.d",
+                                    ifelse(sai_emu_nameshort == "DE_Oder" | sai_emu_nameshort == "DE_Warn", "27.3.d",
                                            ifelse(sai_emu_nameshort == "DE_Schl", "27.3.b,c", NA)))),
          habitat = unique(habitat)) %>% 
   summarise(sai_name = unique(sai_name),
@@ -274,7 +275,7 @@ data_individual <- data_individual_full %>%
          "anguillicola_presence(1=present,0=absent)" = an_pre,
          "evex_presence_(1=present,0=absent)" = ev_pre,
          "hva_presence_(1=present,0=absent)" = hva_pre) %>% 
-  select(all_of(col_names))
+  select(all_of(col_names)) 
 
 # remove habitat column from grouped data
 data_grouped <- data_grouped %>% 
