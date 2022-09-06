@@ -71,7 +71,7 @@ data_processed <- data %>%
   rename(ID = "Lfd..Nr.",
          fge = "FGE",
          habitat = "Habitat",
-         year = "Fangjahr",
+         fi_year = "Fangjahr",
          month = "Fangmonat",
          length_mm = "Length..mm...corrected",
          weight_g = "Mass..g..corrected",
@@ -94,7 +94,7 @@ data_processed <- data %>%
          habitat = ifelse(is.na(habitat), NA,
                     ifelse(habitat == "R" | habitat == "L" | habitat == "F", "F",
                            ifelse(habitat == "M", "MO", habitat))),
-         fi_date = as.Date(paste(year, month, "15",  sep = "-")),
+         fi_date = as.Date(paste(fi_year, month, "15",  sep = "-")),
          fi_lfs_code = ifelse(is.na(stage), NA, 
                          ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
          fi_comment = paste(ID, IND_comment, sep = "_"),
@@ -121,7 +121,7 @@ data_processed <- data %>%
          ev_pre = NA,
          hva_pre = NA,
          hg = as.numeric(hg)) %>% 
-  select(all_of(col_names_full), habitat)
+  select(all_of(col_names_full))
 
 
 
@@ -132,12 +132,13 @@ data_processed <- data %>%
 data_biometry <- data_processed %>% 
   filter(is.na(rep) | rep == 1,
          !is.na(sai_emu_nameshort),
-         !is.na(fi_lfs_code)) %>% 
+         !is.na(fi_lfs_code),
+         !is.na(fi_year)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, series, "DCF", habitat, fi_lfs_code, sep = "_")) 
 
 
 # order biometry dataframe and add a number (not necessary, but useful for checks during programming)
-data_biometry <- data_biometry[order(data_biometry$sai_name, data_biometry$year),]
+data_biometry <- data_biometry[order(data_biometry$sai_name, data_biometry$fi_year),]
 data_biometry$no <- 1:nrow(data_biometry)
 
 
@@ -150,25 +151,29 @@ data_biometry$no <- 1:nrow(data_biometry)
 data_teq <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
-         !is.na(teq)) %>% 
+         !is.na(teq),
+         !is.na(fi_year)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "teq", habitat, fi_lfs_code, sep = "_"))
 
 data_hg <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
-         !is.na(hg)) %>% 
+         !is.na(hg),
+         !is.na(fi_year)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "hg", habitat, fi_lfs_code, sep = "_"))
 
 data_pb <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
-         !is.na(pb)) %>% 
+         !is.na(pb),
+         !is.na(fi_year)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "pb", habitat, fi_lfs_code, sep = "_"))
 
 data_cd <- data_processed %>% 
   filter(!is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
-         !is.na(cd)) %>% 
+         !is.na(cd),
+         !is.na(fi_year)) %>% 
   mutate(sai_name =  paste(sai_emu_nameshort, series, "QUAL", "cd", habitat, fi_lfs_code, sep = "_"))
 
 
@@ -178,7 +183,7 @@ data_quality <- rbind(data_teq, data_hg, data_pb, data_cd)
 
 # order quality dataframe and add a number (not necessary, but useful for checks during 
 # programming and to be consistent with biometry data frame)
-data_quality <- data_quality[order(data_quality$sai_name, data_quality$year),]
+data_quality <- data_quality[order(data_quality$sai_name, data_quality$fi_year),]
 data_quality$no <- 1:nrow(data_quality)
 
 
@@ -198,10 +203,10 @@ data_grouped <- data_individual_full %>%
          length_m = ifelse(f_m == 0, length_mm, NA),
          weight_m = ifelse(f_m == 0, weight_g, NA),
          age_m = ifelse(f_m == 0, age_year, NA)) %>% 
-  group_by(sai_name, year) %>% 
+  group_by(sai_name, fi_year) %>% 
   summarise(sai_name = unique(sai_name),
             sai_emu_nameshort = unique(sai_emu_nameshort),
-            gr_year = unique(year),
+            gr_year = unique(fi_year),
             grsa_lfs_code = unique(fi_lfs_code),
             gr_number = n(),
             length_mm = mean(length_mm, na.rm = T),
@@ -279,7 +284,7 @@ data_individual <- data_individual_full %>%
 
 # remove habitat column from grouped data
 data_grouped <- data_grouped %>% 
-  select(-habitat, -year)
+  select(-habitat, -fi_year)
 
 
 write.table(data_individual, file = "output/2022_data_individual.csv", row.names = FALSE, sep = ";")
