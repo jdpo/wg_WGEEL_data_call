@@ -55,7 +55,7 @@ invisible(lapply(libs, library, character.only = T))
 # read master and vectors with column names (original code for reading csv's included for documentation 
 # and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
 # output but used during processing)
-load("data_master.RData")
+load("2022/data_master.RData")
 
 #data <- read.csv("data/2022_08_11_Aal_DCF.csv", header = T, sep  = ";")
 #col_names <- readLines("data/col_names.csv")
@@ -130,7 +130,7 @@ data_processed <- data %>%
 
 # filter data for use of biometric data
 data_biometry <- data_processed %>% 
-  filter(is.na(rep) | rep == 1,
+  filter(is.na(rep) | rep == 1,             #### CHECK HERE, REP 2 WAS ADDED TO MASTER SHEET!!!
          !is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
          !is.na(fi_year)) %>% 
