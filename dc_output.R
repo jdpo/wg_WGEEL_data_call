@@ -247,7 +247,7 @@ sai_info <- data_grouped %>%
          sai_area_division = ifelse(is.na(sai_emu_nameshort), NA, 
                                     ifelse(sai_emu_nameshort == "DE_Elbe" | sai_emu_nameshort == "DE_Ems"| sai_emu_nameshort == "DE_Eide"| sai_emu_nameshort == "DE_Rhei"| sai_emu_nameshort == "DE_Wese", "27.4.b",
                                     ifelse(sai_emu_nameshort == "DE_Oder" | sai_emu_nameshort == "DE_Warn", "27.3.d",
-                                           ifelse(sai_emu_nameshort == "DE_Schl", "27.3.b,c", NA)))),
+                                           ifelse(sai_emu_nameshort == "DE_Schl", "27.3.b, c", NA)))),
          habitat = unique(habitat)) %>% 
   summarise(sai_name = unique(sai_name),
             sai_emu_nameshort = unique(sai_emu_nameshort),
