@@ -7,6 +7,7 @@
 # Author: Jan-Dag Pohlmann
 # Date: 11.08.2022
 
+#FIRST PROMPT IN THE LAST SECTION NEEDS TO BE SET TO THE CORRECT FILE PATH EACH YEAR (THE ANNEX SEND FROM ICES)
 
 #--------------------- 1. PROVIDE GENERAL COMMENTS -------------------------#
 
@@ -34,7 +35,7 @@ BALANCE_info_protocol <- "All samples are collected from a stow net near the est
 #---------------------- 2. load/install libraries ----------------------------#
 
 # define libraries needed
-libs <- c("tidyverse") 
+libs <- c("tidyverse", "readxl") 
 
 # define libraries already installed
 installed_libs <- libs %in% rownames(installed.packages())
@@ -54,41 +55,43 @@ invisible(lapply(libs, library, character.only = T))
 
 # read master and vectors with column names (original code for reading csv's included for documentation 
 # and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
-# output but used during processing)
-load("2022/data_master.RData")
+# output but used during processing). Read _excel is for working with xlsx directly.
+#load("2022/data_master.RData")
 
-#data <- read.csv("data/2022_08_11_Aal_DCF.csv", header = T, sep  = ";")
-#col_names <- readLines("data/col_names.csv")
-#col_names_full <- readLines("data/col_names_full.csv")
+data <- read_excel("input_data/2023/2023_08_03_Aal_DCF.xlsx", 
+           sheet = "Master")
+#data <- read.table("input_data/2023/2022_08_11_Aal_DCF.xlsx", header = T, sep  = ";")
+col_names <- readLines("input_data/col_names.csv")
+col_names_full <- readLines("input_data/col_names_full.csv")
 
 
 # replace all excel error messages and placeholders for NA with NA
-data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("#WERT!", "#NV", "", "#BEZUG!", "-"), NA)))
+data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("NA", "#WERT!", "#NV", "", "#BEZUG!", "-"), NA)))
 
                             
 # edit the original data to ease programming (horrible headers!)
 data_processed <- data %>%
-  rename(ID = "Lfd..Nr.",
+  rename(ID = "Lfd. Nr.",
          fge = "FGE",
          habitat = "Habitat",
          fi_year = "Fangjahr",
          month = "Fangmonat",
-         length_mm = "Length..mm...corrected",
-         weight_g = "Mass..g..corrected",
+         length_mm = "Length (mm)  corrected",
+         weight_g = "Mass (g) corrected",
          eye_diam_mean_mm = "eye_diam_avg",
-         stage = "Stage..s.i..",
+         stage = "Stage (s.i.)",
          sex = "Sex",
-         age_year = "Age..y.",
-         muscle_lipid_fatmeter_perc = "Fett....Fatmeter.Eel.1..ggf..korrigiert..aus.eel.2...",
-         muscle_lipid_gravimeter_perc = "Fett....Labor.",
-         teq = "PCB...pg.TEQ.g.ww.",
-         pectoral_length_mm = "Brustfl....mm.",
-         anguillicola_intensity = "Anguillicola.cr...n.gesamt.",
-         pb = "Pb.Muskel..µg.kg.dw.",
-         hg = "Quecksilber.Muskel..µg.kg.ww.",
-         cd = "Cd.Muskel..µg.kg.dw.",
+         age_year = "Age (y)",
+         muscle_lipid_fatmeter_perc = "Fett (%-Fatmeter Eel-1, ggf. korrigiert (aus eel-2?))",
+         muscle_lipid_gravimeter_perc = "Fett % (Labor)",
+         teq = "PCB  (pg TEQ/g ww)",
+         pectoral_length_mm = "Brustfl.  (mm)",
+         anguillicola_intensity = "Anguillicola cr. (n gesamt)",
+         pb = "Pb Muskel (µg/kg dw)",
+         hg = "Quecksilber Muskel (µg/kg ww)",
+         cd = "Cd Muskel (µg/kg dw)",
          rep = "representative") %>% 
-  mutate(fi_id = NA,
+  mutate(fi_id = ID,
          sai_name = NA,
          sai_emu_nameshort = ifelse(is.na(fge), NA, paste("DE", substr(fge, 1, 4), sep = "_")),
          habitat = ifelse(is.na(habitat), NA,
@@ -97,7 +100,7 @@ data_processed <- data %>%
          fi_date = as.Date(paste(fi_year, month, "15",  sep = "-")),
          fi_lfs_code = ifelse(is.na(stage), NA, 
                          ifelse(stage == 4 | stage == 5 | stage == 6, "S", "Y")),
-         fi_comment = paste(ID, IND_comment, sep = "_"),
+         fi_comment = IND_comment,
          fi_last_update = NA,
          fi_dts_datasource = NA,
          fisa_x_4326 = NA,
@@ -120,7 +123,12 @@ data_processed <- data %>%
          teq = as.numeric(ifelse(is.na(teq), NA, teq)),
          ev_pre = NA,
          hva_pre = NA,
-         hg = as.numeric(hg)) %>% 
+         hg = as.numeric(hg),
+         pb = as.numeric(pb),
+         cd = as.numeric(cd),
+         muscle_lipid_fatmeter_perc = as.numeric(muscle_lipid_fatmeter_perc),
+         muscle_lipid_gravimeter_perc = as.numeric(muscle_lipid_gravimeter_perc),
+         pectoral_length_mm = as.numeric(pectoral_length_mm)) %>% 
   select(all_of(col_names_full))
 
 
@@ -130,7 +138,7 @@ data_processed <- data %>%
 
 # filter data for use of biometric data
 data_biometry <- data_processed %>% 
-  filter(is.na(rep) | rep == 1,             #### CHECK HERE, REP 2 WAS ADDED TO MASTER SHEET!!!
+  filter(is.na(rep) | rep == 1 | rep == 2,             #### REP 2 is representative for life stage sampled
          !is.na(sai_emu_nameshort),
          !is.na(fi_lfs_code),
          !is.na(fi_year)) %>% 
@@ -242,34 +250,28 @@ data_grouped <- data_individual_full %>%
 # create sai_info
 sai_info <- data_grouped %>% 
   group_by(sai_name) %>% 
-  mutate(max = max(gr_year),
-         min = min (gr_year),
-         sai_area_division = ifelse(is.na(sai_emu_nameshort), NA, 
+  mutate(sai_area_division = ifelse(is.na(sai_emu_nameshort), NA, 
                                     ifelse(sai_emu_nameshort == "DE_Elbe" | sai_emu_nameshort == "DE_Ems"| sai_emu_nameshort == "DE_Eide"| sai_emu_nameshort == "DE_Rhei"| sai_emu_nameshort == "DE_Wese", "27.4.b",
                                     ifelse(sai_emu_nameshort == "DE_Oder" | sai_emu_nameshort == "DE_Warn", "27.3.d",
                                            ifelse(sai_emu_nameshort == "DE_Schl", "27.3.b, c", NA)))),
          habitat = unique(habitat)) %>% 
   summarise(sai_name = unique(sai_name),
             sai_emu_nameshort = unique(sai_emu_nameshort),
-            sai_year = unique(min),
-            max = unique(max),
             sai_area_division = unique(sai_area_division),
             sai_hty_code = unique(habitat),
-            sai_sampling_objective = "DCF",
+            sai_samplingobjective = "DCF",
             sai_samplingstrategy = "commercial fisheries",
             sai_protocol = ifelse(grepl("QUAL", sai_name), QUAL_info_protocol,
                                   ifelse(grepl("BALANCE", sai_name), BALANCE_info_protocol,
                                          ifelse(grepl("DCF", sai_name), DCF_info_protocol, NA))),
-            sai_qal_id = "",
+            sai_qal_id = 1,
             sai_comment = ifelse(grepl("QUAL", sai_name), QUAL_group_comment,
                                  ifelse(grepl("BALANCE", sai_name), BALANCE_group_comment,
-                                        ifelse(grepl("DCF", sai_name), DCF_group_comment, NA)))) %>% 
-  mutate(sai_year = ifelse(sai_year == max, sai_year, paste(sai_year, max, sep ="-"))) %>% 
-  select(-max)
+                                        ifelse(grepl("DCF", sai_name), DCF_group_comment, NA)))) 
             
 
 
-#------------------------- 6. CLEAN UP, WRITE CSV FILES AND STORE AN RDATA -------------------------#
+#------------- 6. CLEAN UP -----------------#
 
 # clean environment
 
@@ -287,6 +289,54 @@ data_grouped <- data_grouped %>%
   select(-habitat, -fi_year)
 
 
-write.table(data_individual, file = "output/2022_data_individual.csv", row.names = FALSE, sep = ";")
-write.table(data_grouped, file = "output/2022_data_grouped.csv", row.names = FALSE, sep = ";")
-write.table(sai_info, file = "output/2022_sai_info.csv", row.names = FALSE, sep = ";")
+
+
+#------------- 6. CREATE FILE WITH PREVIOUS SUBMISSIONS (work in progress for next year) -----------------#
+
+# load previous calls and combine to a single df, if an update was provided in a more recent call
+# only the latest update will be kept
+
+#list all earlier data_individual submission files & create an empty frame 
+###prev_ind <- list.files(path = "output_data/data_individual/", pattern = "*.csv")
+###ind_all <- data_individual <- data_individual[0, ] %>% mutate(sub_year = as.numeric(),
+###                                                              national_ID = as.numeric())
+
+###for (i in 1:length(prev_ind)){
+  
+  #read data and remove ominous column "X"
+  ###path <- paste(prev_ind[i])
+  ###sub_year <- str_extract(path, "[^_]+")
+  ###path_full <- paste("output_data/data_individual", path, sep = "/")
+  ###data_temp <- read.csv(path_full, header = T, sep =";") %>% mutate(sub_year = sub_year,
+###                                                                    national_ID = as.numeric(str_extract(fi_comment, "[^_]+")))
+  ###ind_all <- rbind(ind_all, data_temp)
+  
+#}
+
+
+
+ 
+#------------------------- 7. RUN FINAL CHECKS AND PRINT CSVs -------------------------#
+
+#test if anything has changed in sai_info and only keep those that are changed
+sai_old <- read_excel("input_data/2023/2023_Eel_Data_Call_Annex10_Other_Sampling_Data_DE.xlsx", 
+                   sheet = "sampling_info") %>% 
+  select(-sai_lastupdate, -sai_dts_datasource)
+
+#create file with only changes series_info (if no chjanges create a file with "no changes")
+sai_info_updated <- anti_join(sai_info, sai_old)
+if (nrow(sai_info_updated) == 0){sai_info_updated <- data.frame("NO_UPDATED_SERIES" = "")}
+
+#test if all rows are unique (no idea what my intention was here... seems useless but kept for now to be sure it's not usefula after all;)
+distinct_ind <- data_individual %>% distinct(sai_name, fi_comment, .keep_all = TRUE) 
+test_ind <- anti_join(distinct_ind, data_individual)
+
+distinct_gr <- data_grouped %>% distinct(sai_name, gr_year, .keep_all = TRUE)
+test_gr <- anti_join(distinct_gr, data_grouped)
+
+distinct_sai <- sai_info %>% distinct(sai_name, .keep_all = TRUE)
+test_sai <- anti_join(distinct_sai, sai_info)
+
+write.table(data_individual, file = "output_data/data_individual/2023_data_individual.csv", row.names = FALSE, sep = ";")
+write.table(data_grouped, file = "output_data/data_grouped/2023_data_grouped.csv", row.names = FALSE, sep = ";")
+write.table(sai_info_updated, file = "output_data/sai_info/2023_sai_info_update.csv", row.names = FALSE, sep = ";")
