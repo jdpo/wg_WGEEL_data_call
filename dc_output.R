@@ -7,9 +7,10 @@
 # Author: Jan-Dag Pohlmann
 # Date: 11.08.2022
 
-#FIRST PROMPT IN THE LAST SECTION NEEDS TO BE SET TO THE CORRECT FILE PATH EACH YEAR (THE ANNEX SEND FROM ICES)
+#Define path from current data call ANNEX 10 here
+annex_path <- "input_data/2023/2023_Eel_Data_Call_Annex10_Other_Sampling_Data_DE.xlsx"
 
-#--------------------- 1. PROVIDE GENERAL COMMENTS -------------------------#
+#####--------------------- 1. PROVIDE GENERAL COMMENTS -------------------------#####
 
 # Provide a general comment for grouped data of "DCF" series
 DCF_group_comment <- "Not necessarily representative for EMU, summarizes all landings sub-samples from single or multiple fishermen in this EMU, which are considered representative of these catches. Hence, quality data does not comprise all available quality data in this EMU, these are reported in seperate (QUAL) series"
@@ -32,7 +33,7 @@ QUAL_info_protocol <- "Samples usually from commercial fisheries but can include
 # provide a comments for sai_info (sai_protocol) if it's BALANCE data
 BALANCE_info_protocol <- "All samples are collected from a stow net near the estuary year round. Samples are restricted to few years though (not complete and therefore not representative yet), as they are/were taken as part of the BALANCE project."
 
-#---------------------- 2. load/install libraries ----------------------------#
+#####---------------------- 2. load/install libraries ----------------------------#####
 
 # define libraries needed
 libs <- c("tidyverse", "readxl") 
@@ -51,7 +52,7 @@ invisible(lapply(libs, library, character.only = T))
 
 
 
-#-------------------- 3. PROCESS INDIVIDUAL DATA -------------------# 
+#####-------------------- 3. PROCESS INDIVIDUAL DATA -------------------##### 
 
 # read master and vectors with column names (original code for reading csv's included for documentation 
 # and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
@@ -63,7 +64,7 @@ data <- read_excel("input_data/2023/2023_08_03_Aal_DCF.xlsx",
 #data <- read.table("input_data/2023/2022_08_11_Aal_DCF.xlsx", header = T, sep  = ";")
 col_names <- readLines("input_data/col_names.csv")
 col_names_full <- readLines("input_data/col_names_full.csv")
-
+col_names_grouped_new <- readLines("input_data/colnames_grouped_new.csv")
 
 # replace all excel error messages and placeholders for NA with NA
 data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("NA", "#WERT!", "#NV", "", "#BEZUG!", "-"), NA)))
@@ -76,22 +77,22 @@ data_processed <- data %>%
          habitat = "Habitat",
          fi_year = "Fangjahr",
          month = "Fangmonat",
-         length_mm = "Length (mm)  corrected",
-         weight_g = "Mass (g) corrected",
+         lengthmm = "Length (mm)  corrected",
+         weightg = "Mass (g) corrected",
          eye_diam_mean_mm = "eye_diam_avg",
          stage = "Stage (s.i.)",
          sex = "Sex",
-         age_year = "Age (y)",
+         ageyear = "Age (y)",
          muscle_lipid_fatmeter_perc = "Fett (%-Fatmeter Eel-1, ggf. korrigiert (aus eel-2?))",
          muscle_lipid_gravimeter_perc = "Fett % (Labor)",
          teq = "PCB  (pg TEQ/g ww)",
-         pectoral_length_mm = "Brustfl.  (mm)",
+         pectoral_lengthmm = "Brustfl.  (mm)",
          anguillicola_intensity = "Anguillicola cr. (n gesamt)",
          pb = "Pb Muskel (µg/kg dw)",
          hg = "Quecksilber Muskel (µg/kg ww)",
          cd = "Cd Muskel (µg/kg dw)",
          rep = "representative") %>% 
-  mutate(fi_id = ID,
+  mutate(fi_idcou = as.character(ID),
          sai_name = NA,
          sai_emu_nameshort = ifelse(is.na(fge), NA, paste("DE", substr(fge, 1, 4), sep = "_")),
          habitat = ifelse(is.na(habitat), NA,
@@ -105,9 +106,9 @@ data_processed <- data %>%
          fi_dts_datasource = NA,
          fisa_x_4326 = NA,
          fisa_y_4326 = NA,
-         length_mm = as.numeric(length_mm),
-         weight_g = as.numeric(weight_g),
-         age_year = as.numeric(age_year),
+         lengthmm = as.numeric(lengthmm),
+         weightg = as.numeric(weightg),
+         ageyear = as.numeric(ageyear),
          f_m = ifelse(!is.na(stage), 
                       ifelse(stage == 4 | stage == 5, 1,
                         ifelse(stage == 6, 0,
@@ -128,13 +129,13 @@ data_processed <- data %>%
          cd = as.numeric(cd),
          muscle_lipid_fatmeter_perc = as.numeric(muscle_lipid_fatmeter_perc),
          muscle_lipid_gravimeter_perc = as.numeric(muscle_lipid_gravimeter_perc),
-         pectoral_length_mm = as.numeric(pectoral_length_mm)) %>% 
+         pectoral_lengthmm = as.numeric(pectoral_lengthmm)) %>% 
   select(all_of(col_names_full))
 
 
 
 
-#-------------------- 3. PREPARE INDIVIDUAL BIOMETRY DATA -------------------# 
+#####-------------------- 3. PREPARE INDIVIDUAL BIOMETRY DATA -------------------#####
 
 # filter data for use of biometric data
 data_biometry <- data_processed %>% 
@@ -152,7 +153,7 @@ data_biometry$no <- 1:nrow(data_biometry)
 
 
 
-#-------------------- 4. PREPARE INDIVIDUAL QUALITY DATA -------------------#
+#####-------------------- 4. PREPARE INDIVIDUAL QUALITY DATA -------------------#####
 
 # filter data for use of quality data and create seperate data frames for each 
 # available quality indicator (to produce seperate series per indicator)
@@ -197,7 +198,7 @@ data_quality$no <- 1:nrow(data_quality)
 
 
 
-#------------------------- 5. COMBINE INDIVIDUAL DATA AND CREATE GROUP DATA FOR OUTPUT -------------------------#
+#####------------------------- 5. COMBINE INDIVIDUAL DATA AND CREATE GROUP DATA FOR OUTPUT -------------------------#####
 
 # combine all individual biometry and quality data (several individuals 
 # may occur in several series, with a seperate line for each series)
@@ -205,29 +206,29 @@ data_individual_full <- rbind(data_biometry, data_quality)
 
 # summarize individual data to generate output for grouped data
 data_grouped <- data_individual_full %>%
-  mutate(length_f = ifelse(f_m == 1, length_mm, NA),
-         weight_f = ifelse(f_m == 1, weight_g, NA),
-         age_f = ifelse(f_m == 1, age_year, NA),
-         length_m = ifelse(f_m == 0, length_mm, NA),
-         weight_m = ifelse(f_m == 0, weight_g, NA),
-         age_m = ifelse(f_m == 0, age_year, NA)) %>% 
+  mutate(length_f = ifelse(f_m == 1, lengthmm, NA),
+         weight_f = ifelse(f_m == 1, weightg, NA),
+         age_f = ifelse(f_m == 1, ageyear, NA),
+         length_m = ifelse(f_m == 0, lengthmm, NA),
+         weight_m = ifelse(f_m == 0, weightg, NA),
+         age_m = ifelse(f_m == 0, ageyear, NA)) %>% 
   group_by(sai_name, fi_year) %>% 
   summarise(sai_name = unique(sai_name),
             sai_emu_nameshort = unique(sai_emu_nameshort),
             gr_year = unique(fi_year),
             grsa_lfs_code = unique(fi_lfs_code),
             gr_number = n(),
-            length_mm = mean(length_mm, na.rm = T),
-            weight_g = mean(weight_g, na.rm = T),
-            age_year = mean(age_year, na.rm = T),
+            lengthmm = mean(lengthmm, na.rm = T),
+            weightg = mean(weightg, na.rm = T),
+            ageyear = mean(ageyear, na.rm = T),
             female_proportion = length(f_m[which(f_m == 1)])/length(f_m[which(!is.na(f_m))]),
             differentiated_proportion = length(diff[which(diff == 1)])/length(diff[which(!is.na(diff))]),
-            f_mean_length_mm = mean(length_f, na.rm = T), #WHY IS "mean(length_mm[fm == "1"], na.rm = T)" not working!?!?
-            f_mean_weight_g = mean(weight_f, na.rm = T),
-            f_mean_age_year = mean(age_f, na.rm = T),
-            m_mean_length_mm = mean(length_m, na.rm = T),
-            m_mean_weight_g = mean(weight_m, na.rm = T),
-            m_mean_age_year = mean(age_m, na.rm = T),
+            f_mean_lengthmm = mean(length_f, na.rm = T), #WHY IS "mean(length_mm[fm == "1"], na.rm = T)" not working!?!?
+            f_mean_weightg = mean(weight_f, na.rm = T),
+            f_mean_age = mean(age_f, na.rm = T),
+            m_mean_lengthmm = mean(length_m, na.rm = T),
+            m_mean_weightg = mean(weight_m, na.rm = T),
+            m_mean_ageyear = mean(age_m, na.rm = T),
             anguillicola_proportion = length(an_pre[which(an_pre == 1)])/length(an_pre[which(!is.na(an_pre))]),
             anguillicola_intensity = mean(an_pre, na.rm = T),
             muscle_lipid_fatmeter_perc = mean(muscle_lipid_fatmeter_perc, na.rm = T),
@@ -271,7 +272,7 @@ sai_info <- data_grouped %>%
             
 
 
-#------------- 6. CLEAN UP -----------------#
+#####------------- 6. CLEAN UP -----------------#####
 
 # clean environment
 
@@ -291,52 +292,79 @@ data_grouped <- data_grouped %>%
 
 
 
-#------------- 6. CREATE FILE WITH PREVIOUS SUBMISSIONS (work in progress for next year) -----------------#
+#####------------------------- 7. COMPARE WITH DB EXISTING AND PREPARE NEW & UPDATED ENTRIES -------------------------#####
 
-# load previous calls and combine to a single df, if an update was provided in a more recent call
-# only the latest update will be kept
+##### individual data ##### (for 2023 see seperate script!)
 
-#list all earlier data_individual submission files & create an empty frame 
-###prev_ind <- list.files(path = "output_data/data_individual/", pattern = "*.csv")
-###ind_all <- data_individual <- data_individual[0, ] %>% mutate(sub_year = as.numeric(),
-###                                                              national_ID = as.numeric())
+# import individual data from Annex 10 and remove columns that are not needed for integration  (and add lfs if not provided by dc)
+individual_old <- read_excel(annex_path, 
+                        sheet = "existing_individual_metrics") %>%
+  select(-"fi_last update", -fi_dts_datasource) 
 
-###for (i in 1:length(prev_ind)){
-  
-  #read data and remove ominous column "X"
-  ###path <- paste(prev_ind[i])
-  ###sub_year <- str_extract(path, "[^_]+")
-  ###path_full <- paste("output_data/data_individual", path, sep = "/")
-  ###data_temp <- read.csv(path_full, header = T, sep =";") %>% mutate(sub_year = sub_year,
-###                                                                    national_ID = as.numeric(str_extract(fi_comment, "[^_]+")))
-  ###ind_all <- rbind(ind_all, data_temp)
-  
-#}
+# get the database id (fi_id) in the created output (to distinguish update from/new data)
+data_individual_temp <- data_individual %>%
+  left_join(individual_old %>% select(fi_id, fi_idcou, sai_name), by = c("fi_idcou", "sai_name")) %>% 
+  select(names(individual_old)) 
+
+#replace NaN with NA (otherwise they won't be recognized as duplicates)
+data_individual_temp[sapply(data_individual_temp, is.nan)] <- NA
+
+#check if df columns are similar  
+setdiff(names(individual_old), names(data_individual_temp))
+setdiff(names(data_individual_temp), names(individual_old))
+
+# create tables for common, updated and new data
+individual_common <- intersect(individual_old, data_individual_temp) # not needed, only to check for consistency
+individual_update <- setdiff(data_individual_temp %>% filter(!is.na(fi_id)), individual_old)
+individual_new <- data_individual_temp %>% filter(is.na(fi_id))
 
 
 
- 
-#------------------------- 7. RUN FINAL CHECKS AND PRINT CSVs -------------------------#
 
-#test if anything has changed in sai_info and only keep those that are changed
+
+
+##### group data #####
+
+# import grouped data from Annex 10 and remove rows that are not in "new data"
+group_old <- read_excel(annex_path, 
+                      sheet = "existing_group_metrics") %>% 
+  select(-gr_last_update, -gr_dts_datasource)
+
+
+# create a grouped data table with added gr_id (match by year and sai); order same as group_old
+data_grouped_temp <- data_grouped %>% 
+  left_join(group_old %>% select(sai_name, gr_year, gr_id), by = c("sai_name", "gr_year")) %>% 
+  select(names(group_old)) %>% 
+  mutate_all(function(x) ifelse(is.nan(x), NA, x))
+
+# check if df's are similar  
+setdiff(names(group_old), names(data_grouped_temp))
+setdiff(names(data_grouped_temp), names(group_old))
+
+# create tables for common, updated and new data (note, in group_old are 10 series that are not from DCF, hence common & update + 10 is the nrow of group_old)
+grouped_common <- intersect(data_grouped_temp, group_old) # not needed, only to check for consistency
+grouped_update <- setdiff(data_grouped_temp %>% filter(!is.na(gr_id)), group_old)
+grouped_new <- setdiff(data_grouped_temp %>% filter(is.na(gr_id)), group_old) %>% select(all_of(col_names_grouped_new))
+
+
+##### sampling_info #####
+
+#load existing data in db from Annex 10
 sai_old <- read_excel("input_data/2023/2023_Eel_Data_Call_Annex10_Other_Sampling_Data_DE.xlsx", 
-                   sheet = "sampling_info") %>% 
+                      sheet = "sampling_info") %>% 
   select(-sai_lastupdate, -sai_dts_datasource)
 
-#create file with only changes series_info (if no chjanges create a file with "no changes")
-sai_info_updated <- anti_join(sai_info, sai_old)
-if (nrow(sai_info_updated) == 0){sai_info_updated <- data.frame("NO_UPDATED_SERIES" = "")}
+# create file with only changes series_info (if no chjanges create a file with "no changes")
+sai_info_update <- anti_join(sai_info, sai_old)
+if (nrow(sai_info_update) == 0){sai_info_update <- data.frame("NO_UPDATED_SERIES" = "")}
 
-#test if all rows are unique (no idea what my intention was here... seems useless but kept for now to be sure it's not usefula after all;)
-distinct_ind <- data_individual %>% distinct(sai_name, fi_comment, .keep_all = TRUE) 
-test_ind <- anti_join(distinct_ind, data_individual)
+# create a file with new sampling infos
+new_sai <- anti_join(sai_info, sai_old, by = "sai_name")
 
-distinct_gr <- data_grouped %>% distinct(sai_name, gr_year, .keep_all = TRUE)
-test_gr <- anti_join(distinct_gr, data_grouped)
+#####------------------------- 8. PRINT CSVs -------------------------#####
 
-distinct_sai <- sai_info %>% distinct(sai_name, .keep_all = TRUE)
-test_sai <- anti_join(distinct_sai, sai_info)
-
-write.table(data_individual, file = "output_data/data_individual/2023_data_individual.csv", row.names = FALSE, sep = ";")
-write.table(data_grouped, file = "output_data/data_grouped/2023_data_grouped.csv", row.names = FALSE, sep = ";")
-write.table(sai_info_updated, file = "output_data/sai_info/2023_sai_info_update.csv", row.names = FALSE, sep = ";")
+write.table(individual_updated, file = "output_data/data_individual/2023_individual_updated.csv", row.names = FALSE, sep = ";")
+write.table(individual_new, file = "output_data/data_individual/2023_individual_new.csv", row.names = FALSE, sep = ";")
+write.table(grouped_update, file = "output_data/data_grouped/2023_grouped_update.csv", row.names = FALSE, sep = ";")
+write.table(grouped_new, file = "output_data/data_grouped/2023_grouped_new.csv", row.names = FALSE, sep = ";")
+write.table(sai_info_update, file = "output_data/sai_info/2023_sai_info_update.csv", row.names = FALSE, sep = ";")

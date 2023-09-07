@@ -1,15 +1,16 @@
-fi_id
+fi_idcou
 sai_name
 sai_emu_nameshort
 fi_date
+fi_year
 fi_lfs_code
 fisa_x_4326
 fisa_y_4326
-length_mm
-weight_g
-age_year
+lengthmm
+weightg
+ageyear
 eye_diam_mean_mm
-pectoral_length_mm
+pectoral_lengthmm
 is_female_(1=female,0=male)
 is_differentiated_(1=differentiated,0_undifferentiated)
 anguillicola_presence(1=present,0=absent)
@@ -24,4 +25,3 @@ pb
 hg
 cd
 fi_comment
-fi_year

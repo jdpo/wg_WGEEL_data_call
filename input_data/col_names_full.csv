@@ -1,4 +1,4 @@
-fi_id
+fi_idcou
 sai_name
 sai_emu_nameshort
 fi_date
@@ -8,13 +8,13 @@ fi_last_update
 fi_dts_datasource
 fisa_x_4326
 fisa_y_4326
-length_mm
-weight_g
-age_year
+lengthmm
+weightg
+ageyear
 f_m
 diff
 eye_diam_mean_mm
-pectoral_length_mm
+pectoral_lengthmm
 an_pre
 anguillicola_intensity
 muscle_lipid_fatmeter_perc
