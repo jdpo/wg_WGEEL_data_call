@@ -7,8 +7,11 @@
 # Author: Jan-Dag Pohlmann
 # Date: 11.08.2022
 
+#ALWAYS UPDATE "annex_path", "DCF_path" and OUTPUT FILES AT THE END OF THE SCRIPT
+
 #Define path from current data call ANNEX 10 here
-annex_path <- "input_data/2023/2023_Eel_Data_Call_Annex10_Other_Sampling_Data_DE.xlsx"
+annex_path <- "input_data/2024/2024_Eel_Data_Call_Annex19_Other_Sampling_Data_DE.xlsx"
+DCF_file <- "input_data/2024/2023_11_13_Aal_DCF.xlsx"
 
 #####--------------------- 1. PROVIDE GENERAL COMMENTS -------------------------#####
 
@@ -58,8 +61,7 @@ invisible(lapply(libs, library, character.only = T))
 # and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
 # output but used during processing). Read _excel is for working with xlsx directly.
 #load("2022/data_master.RData")
-
-data <- read_excel("input_data/2023/2023_08_03_Aal_DCF.xlsx", 
+data <- read_excel(DCF_file, 
            sheet = "Master")
 #data <- read.table("input_data/2023/2022_08_11_Aal_DCF.xlsx", header = T, sep  = ";")
 col_names <- readLines("input_data/col_names.csv")
@@ -350,7 +352,7 @@ grouped_new <- setdiff(data_grouped_temp %>% filter(is.na(gr_id)), group_old) %>
 ##### sampling_info #####
 
 #load existing data in db from Annex 10
-sai_old <- read_excel("input_data/2023/2023_Eel_Data_Call_Annex10_Other_Sampling_Data_DE.xlsx", 
+sai_old <- read_excel(annex_path, 
                       sheet = "sampling_info") %>% 
   select(-sai_lastupdate, -sai_dts_datasource)
 
@@ -363,8 +365,8 @@ new_sai <- anti_join(sai_info, sai_old, by = "sai_name")
 
 #####------------------------- 8. PRINT CSVs -------------------------#####
 
-write.table(individual_updated, file = "output_data/data_individual/2023_individual_updated.csv", row.names = FALSE, sep = ";")
-write.table(individual_new, file = "output_data/data_individual/2023_individual_new.csv", row.names = FALSE, sep = ";")
-write.table(grouped_update, file = "output_data/data_grouped/2023_grouped_update.csv", row.names = FALSE, sep = ";")
-write.table(grouped_new, file = "output_data/data_grouped/2023_grouped_new.csv", row.names = FALSE, sep = ";")
-write.table(sai_info_update, file = "output_data/sai_info/2023_sai_info_update.csv", row.names = FALSE, sep = ";")
+write.table(individual_updated, file = "output_data/data_individual/2024_individual_updated.csv", row.names = FALSE, sep = ";")
+write.table(individual_new, file = "output_data/data_individual/2024_individual_new.csv", row.names = FALSE, sep = ";")
+write.table(grouped_update, file = "output_data/data_grouped/2024_grouped_update.csv", row.names = FALSE, sep = ";")
+write.table(grouped_new, file = "output_data/data_grouped/2024_grouped_new.csv", row.names = FALSE, sep = ";")
+write.table(sai_info_update, file = "output_data/sai_info/2024_sai_info_update.csv", row.names = FALSE, sep = ";")

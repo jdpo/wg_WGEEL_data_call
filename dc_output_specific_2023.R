@@ -340,6 +340,7 @@ setdiff(names(data_grouped_temp), names(group_old))
 # create tables for common, updated and new data (note, in group_old are 10 series that are not from DCF, hence common & update + 10 is the nrow of group_old)
 grouped_common <- intersect(data_grouped_temp, group_old) # not needed, only to check for consistency
 grouped_update <- setdiff(data_grouped_temp %>% filter(!is.na(gr_id)), group_old) 
+grouped_update2 <- anti_join(data_grouped_temp %>% filter(!is.na(gr_id)), group_old)
 grouped_new <- setdiff(data_grouped_temp %>% filter(is.na(gr_id)), group_old) %>% select(all_of(col_names_grouped_new))
 
 
