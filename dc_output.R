@@ -9,8 +9,12 @@
 
 #ALWAYS UPDATE "annex_path", "DCF_path" and OUTPUT FILES AT THE END OF THE SCRIPT
 
+#CAREFUL! This script will re-integrate deleted individual/group metrics with current values from our DCF data of the same 
+#fish (based on fish_cou_id). If they should actually be deleted, check the creation of "individual_new" under "create
+#tables for common, updated and new data"
+
 #Define path from current data call ANNEX 10 here
-annex_path <- "input_data/2024/2024_Eel_Data_Call_Annex19_Other_Sampling_Data_DE.xlsx"
+annex_path <- "input_data/2024/2024_Eel_Data_Call_Annex9_Other_Sampling_Data_DE.xlsx"
 DCF_file <- "input_data/2024/2023_11_13_Aal_DCF.xlsx"
 
 #####--------------------- 1. PROVIDE GENERAL COMMENTS -------------------------#####
@@ -57,14 +61,46 @@ invisible(lapply(libs, library, character.only = T))
 
 #####-------------------- 3. PROCESS INDIVIDUAL DATA -------------------##### 
 
-# read master and vectors with column names (original code for reading csv's included for documentation 
-# and convenience when re-running from scratch; col_names_full includes some columns that are not needed in the 
+# read master and vectors with column names (col_names_full includes some columns that are not needed in the 
 # output but used during processing). Read _excel is for working with xlsx directly.
-#load("2022/data_master.RData")
+
+# read up to date thuenen DCF data
 data <- read_excel(DCF_file, 
            sheet = "Master")
-#data <- read.table("input_data/2023/2022_08_11_Aal_DCF.xlsx", header = T, sep  = ";")
-col_names <- readLines("input_data/col_names.csv")
+
+
+##### read data reported before from annex #####
+
+# import individual data from Annex 10 and remove columns that are not needed for integration  (and add lfs if not provided by dc)
+individual_old <- read_excel(annex_path, 
+                             sheet = "existing_individual_metrics") %>%
+  select(-"fi_last update", -fi_dts_datasource) 
+
+# read individual deleted
+individual_deleted <- read_excel(annex_path, 
+                             sheet = "deleted_individual_metrics") %>%
+  select(-"fi_last_update", -fi_dts_datasource)
+
+# read individual new (for correct header order)
+new_ind_headers <- read_excel(annex_path, 
+                                 sheet = "new_individual_metrics") 
+
+# import grouped data from Annex 10 and remove rows that are not in "new data"
+group_old <- read_excel(annex_path, 
+                        sheet = "existing_group_metrics") %>% 
+  select(-gr_last_update, -gr_dts_datasource)
+
+# read group deleted
+group_deleted <- read_excel(annex_path, 
+                        sheet = "deleted_group_metrics") %>% 
+  select(-gr_last_update, -gr_dts_datasource)
+
+# read individual new (for correct header order)
+new_group_headers <- read_excel(annex_path, 
+                              sheet = "new_group_metrics")
+
+# data <- read.table("input_data/2023/2022_08_11_Aal_DCF.xlsx", header = T, sep  = ";")
+col_names <- names(individual_old)
 col_names_full <- readLines("input_data/col_names_full.csv")
 col_names_grouped_new <- readLines("input_data/colnames_grouped_new.csv")
 
@@ -81,7 +117,7 @@ data_processed <- data %>%
          month = "Fangmonat",
          lengthmm = "Length (mm)  corrected",
          weightg = "Mass (g) corrected",
-         eye_diam_mean_mm = "eye_diam_avg",
+         eye_diam_meanmm = "eye_diam_avg",
          stage = "Stage (s.i.)",
          sex = "Sex",
          ageyear = "Age (y)",
@@ -94,7 +130,7 @@ data_processed <- data %>%
          hg = "Quecksilber Muskel (µg/kg ww)",
          cd = "Cd Muskel (µg/kg dw)",
          rep = "representative") %>% 
-  mutate(fi_idcou = as.character(ID),
+  mutate(fi_id_cou = as.character(ID),
          sai_name = NA,
          sai_emu_nameshort = ifelse(is.na(fge), NA, paste("DE", substr(fge, 1, 4), sep = "_")),
          habitat = ifelse(is.na(habitat), NA,
@@ -274,22 +310,44 @@ sai_info <- data_grouped %>%
             
 
 
-#####------------- 6. CLEAN UP -----------------#####
+#####------------- 6. CLEAN UP & ROUNDING -----------------#####
 
 # clean environment
 
 # rename some columns in individual data to be consistent with data call spreadsheet and remove additional columns 
 data_individual <- data_individual_full %>%
-  rename("is_female_(1=female,0=male)" = f_m,
+  rename("is_female(1=female,0=male)" = f_m,
          "is_differentiated_(1=differentiated,0_undifferentiated)" = diff,
-         "anguillicola_presence(1=present,0=absent)" = an_pre,
+         "anguillicola_presence_visual(1=present,0=absent)" = an_pre,
          "evex_presence_(1=present,0=absent)" = ev_pre,
-         "hva_presence_(1=present,0=absent)" = hva_pre) %>% 
-  select(all_of(col_names)) 
+         "hva_presence_(1=present,0=absent)" = hva_pre) %>%
+  mutate("method_sex_(1=visual,0=use_length)" = NA,
+          "method_anguillicola_(1=stereomicroscope,0=visual_obs)" = NA,
+         eye_diam_meanmm = floor(eye_diam_meanmm*100)/100, #make sure rounding doesn't create false updates
+         lengthmm = floor(lengthmm*100)/100,
+         weightg = floor(weightg*100)/100)
+
 
 # remove habitat column from grouped data
 data_grouped <- data_grouped %>% 
-  select(-habitat, -fi_year)
+  select(-habitat, -fi_year) %>% 
+  mutate(differentiated_proportion = floor(differentiated_proportion*100)/100,
+         ageyear = floor(ageyear*100)/100,
+         lengthmm = floor(lengthmm*100)/100,
+         weightg = floor(weightg*100)/100,
+         f_mean_lengthmm = floor(f_mean_lengthmm*100)/100,
+         f_mean_age = floor(f_mean_age*100)/100,
+         m_mean_ageyear = floor(m_mean_ageyear*100)/100,
+         m_mean_lengthmm = floor(m_mean_lengthmm*100)/100,
+         f_mean_weightg = floor(f_mean_weightg*100)/100,
+         m_mean_weightg = floor(m_mean_weightg*100)/100,
+         female_proportion = floor(female_proportion*100)/100,
+         anguillicola_intensity = floor(anguillicola_intensity*100)/100,
+         anguillicola_proportion = floor(anguillicola_proportion*100)/100,
+         "method_sex_(1=visual,0=use_length)" = NA,
+         "method_anguillicola_(1=stereomicroscope,0=visual_obs)" = NA) #fill in columns that are in the dc template (but we don't have info on)
+
+
 
 
 
@@ -298,15 +356,12 @@ data_grouped <- data_grouped %>%
 
 ##### individual data ##### (for 2023 see seperate script!)
 
-# import individual data from Annex 10 and remove columns that are not needed for integration  (and add lfs if not provided by dc)
-individual_old <- read_excel(annex_path, 
-                        sheet = "existing_individual_metrics") %>%
-  select(-"fi_last update", -fi_dts_datasource) 
-
 # get the database id (fi_id) in the created output (to distinguish update from/new data)
-data_individual_temp <- data_individual %>%
-  left_join(individual_old %>% select(fi_id, fi_idcou, sai_name), by = c("fi_idcou", "sai_name")) %>% 
-  select(names(individual_old)) 
+invisible(ifelse(nrow(individual_old) != 0, data_individual_temp <- data_individual %>%
+                            left_join(individual_old %>% select(fi_id, fi_id_cou, sai_name), by = c("fi_id_cou", "sai_name")) %>% 
+                            select(names(individual_old)), 
+                                  data_individual_temp <- data_individual %>% 
+                                  select(names(individual_old)[! names(individual_old) %in% c("fi_id")])))
 
 #replace NaN with NA (otherwise they won't be recognized as duplicates)
 data_individual_temp[sapply(data_individual_temp, is.nan)] <- NA
@@ -316,37 +371,41 @@ setdiff(names(individual_old), names(data_individual_temp))
 setdiff(names(data_individual_temp), names(individual_old))
 
 # create tables for common, updated and new data
-individual_common <- intersect(individual_old, data_individual_temp) # not needed, only to check for consistency
-individual_update <- setdiff(data_individual_temp %>% filter(!is.na(fi_id)), individual_old)
-individual_new <- data_individual_temp %>% filter(is.na(fi_id))
-
-
-
-
+invisible(ifelse(nrow(individual_old == 0), individual_new <- data_individual_temp,
+                 ifelse(individual_deleted == 0, individual_new <- data_individual_temp %>% filter(is.na(fi_id)),
+                        individual_new <- bind_rows(data_individual_temp %>% filter(is.na(fi_id)), data_individual_temp %>% filter(fi_id %in% unique(individual_deleted$fi_id))))))  
+                        
+invisible(ifelse(individual_old == 0, individual_update <- data.frame("NO_INDIVIDUALS_TO_UPDATE" = ""), 
+            ifelse(individual_deleted == 0, individual_update <- anti_join(data_individual_temp %>% filter(!is.na(fi_id)), individual_old),
+                   individual_update <- anti_join(data_individual_temp %>% filter(!is.na(fi_id)) %>% filter(!fi_id %in% unique(individual_deleted$fi_id)), individual_old))))
 
 
 ##### group data #####
 
-# import grouped data from Annex 10 and remove rows that are not in "new data"
-group_old <- read_excel(annex_path, 
-                      sheet = "existing_group_metrics") %>% 
-  select(-gr_last_update, -gr_dts_datasource)
-
-
 # create a grouped data table with added gr_id (match by year and sai); order same as group_old
-data_grouped_temp <- data_grouped %>% 
-  left_join(group_old %>% select(sai_name, gr_year, gr_id), by = c("sai_name", "gr_year")) %>% 
-  select(names(group_old)) %>% 
-  mutate_all(function(x) ifelse(is.nan(x), NA, x))
+invisible(ifelse(nrow(group_old) != 0, data_group_temp <- data_grouped  %>%  
+                    left_join(group_old %>% select(sai_name, gr_year, gr_id), by = c("sai_name", "gr_year")) %>% 
+                    select(names(group_old)) %>% 
+                    mutate_all(function(x) ifelse(is.nan(x), NA, x)),
+                        data_group_temp <- data_grouped  %>%  
+                        select(names(group_old)) %>% 
+                        mutate_all(function(x) ifelse(is.nan(x), NA, x))))
+  
 
 # check if df's are similar  
-setdiff(names(group_old), names(data_grouped_temp))
-setdiff(names(data_grouped_temp), names(group_old))
+setdiff(names(group_old), names(data_group_temp))
+setdiff(names(data_group_temp), names(group_old))
+
+
 
 # create tables for common, updated and new data (note, in group_old are 10 series that are not from DCF, hence common & update + 10 is the nrow of group_old)
-grouped_common <- intersect(data_grouped_temp, group_old) # not needed, only to check for consistency
-grouped_update <- setdiff(data_grouped_temp %>% filter(!is.na(gr_id)), group_old)
-grouped_new <- setdiff(data_grouped_temp %>% filter(is.na(gr_id)), group_old) %>% select(all_of(col_names_grouped_new))
+invisible(ifelse(nrow(group_old == 0), group_new <- data_group_temp %>% select(names(group_old)),
+                 ifelse(group_deleted == 0, group_new <- data_group_temp %>% filter(is.na(gr_id)) %>% select(names(group_old)),
+                      group_new <- bind_rows(data_group_temp %>% filter(is.na(gr_id)), data_group_temp %>% filter(gr_id %in% unique(group_deleted$gr_id)))%>% select(names(group_old)))))  
+
+invisible(ifelse(group_old == 0, group_update <- data.frame("NO_GROUPS_TO_UPDATE" = ""), 
+                 ifelse(group_deleted == 0, group_update <- anti_join(data_group_temp %>% filter(!is.na(gr_id)), group_old) %>% select(names(group_old)),
+                          group_update <- anti_join(data_group_temp %>% filter(!is.na(gr_id)) %>% filter(!gr_id %in% unique(group_deleted$gr_id)), group_old) %>% select(names(group_old)))))
 
 
 ##### sampling_info #####
@@ -365,8 +424,8 @@ new_sai <- anti_join(sai_info, sai_old, by = "sai_name")
 
 #####------------------------- 8. PRINT CSVs -------------------------#####
 
-write.table(individual_updated, file = "output_data/data_individual/2024_individual_updated.csv", row.names = FALSE, sep = ";")
-write.table(individual_new, file = "output_data/data_individual/2024_individual_new.csv", row.names = FALSE, sep = ";")
-write.table(grouped_update, file = "output_data/data_grouped/2024_grouped_update.csv", row.names = FALSE, sep = ";")
-write.table(grouped_new, file = "output_data/data_grouped/2024_grouped_new.csv", row.names = FALSE, sep = ";")
-write.table(sai_info_update, file = "output_data/sai_info/2024_sai_info_update.csv", row.names = FALSE, sep = ";")
+write.table(individual_update, file = "output_data/data_individual/2024_individual_updated.csv", row.names = FALSE, sep = ";", na = "")
+write.table(individual_new, file = "output_data/data_individual/2024_individual_new.csv", row.names = FALSE, sep = ";", na = "")
+write.table(group_update, file = "output_data/data_grouped/2024_group_update.csv", row.names = FALSE, sep = ";", na = "")
+write.table(group_new, file = "output_data/data_grouped/2024_group_new.csv", row.names = FALSE, sep = ";", na = "")
+write.table(sai_info_update, file = "output_data/sai_info/2024_sai_info_update.csv", row.names = FALSE, sep = ";", na = "")
