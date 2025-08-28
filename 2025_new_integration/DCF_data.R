@@ -18,7 +18,7 @@ Balance_data <- "2025_new_integration/eel_sex_data.xlsx"
 
 
 # define libraries needed
-libs <- c("tidyverse", "readxl", "dplyr", "purrr", "stringr", "lubridate", "writexl") 
+libs <- c("tidyverse", "readxl", "dplyr", "purrr", "stringr", "lubridate", "writexl", "icesTAF") 
 
 # define libraries already installed
 installed_libs <- libs %in% rownames(installed.packages())
@@ -30,6 +30,9 @@ if (any(installed_libs == F)) {
 
 # load libraries needed
 invisible(lapply(libs, library, character.only = T))
+
+#create directory
+mkdir( "2025_new_integration/output")
 
 
 #####-------------------- 2. LOAD TO  BE USED FOR INDIVIDUAL METRICS -------------------##### 
@@ -87,8 +90,12 @@ data <- left_join(data, Balance %>% select("Balance ID", "bal_sex"), by = c("Ext
   mutate(Sex = ifelse(!is.na(bal_sex), bal_sex, Sex),
          bal_sex = NULL)
 
-#write new table for Ulrike
-write_xlsx(data, "2025_new_integration/Master_edited.xlsx")
+#get data types for Ulrike
+types <- data.frame(Column = names(data), DataType = sapply(data, class))
+
+#write new tables for Ulrike
+write_xlsx(data, "2025_new_integration/output/Master_edited.xlsx")
+write_xlsx(types, "2025_new_integration/output/Master_types.xlsx")
 
 ################################## 3. CREATE NEW INDIVIDUAL METRIC TABLE ##################################
 
@@ -114,14 +121,15 @@ data_processed <- data %>%
 #edit columns to match data call
 data_processed <- data_processed %>% 
   mutate(habitat = case_when(
+          str_detect(series, "(?i)balance") ~ "T",
           habitat %in% c("R", "L", "F") ~ "F",                  # recode R, L, F as F
           habitat == "M" ~ "MO",                                # recode M as MO
           TRUE ~ habitat),                                        # otherwise keep original
          sai_emu_nameshort = ifelse(is.na(fge), NA, substr(fge, 1, 4)),
          sai_name = case_when(
-           is.na(fge) ~ paste("DE_", "other_", habitat),
-           is.na(habitat) ~ paste("DE_", substr(fge, 1, 4), "_other"),
-           TRUE ~ paste("DE_", substr(fge, 1, 4), "_", habitat)),
+           is.na(fge) ~ paste0("DE_", "other_", habitat),
+           is.na(habitat) ~ paste0("DE_", substr(fge, 1, 4), "_other"),
+           TRUE ~ paste0("DE_", substr(fge, 1, 4), "_", habitat)),
          fi_lfs_code = case_when(
            stage %in% c(1, 2, 3) ~ "Y",
            stage %in% c(4, 5, 6) ~ "S",
@@ -158,7 +166,8 @@ data_processed <- data_processed %>%
          method_anguillicola = ifelse(is.na(anguillicola_intensity), NA, 1),  
          evex_presence = NA, 
          hva_presence = NA,
-         fi_comment = ""
+         fi_comment = "",
+         fi_date = str_replace_all(fi_date, " ", "")
          ) %>% 
   rename("is_female_(1=female,0=male)" = is_female,
          "method_sex_(1=visual,0=use_length)" = method_sex,
@@ -171,7 +180,112 @@ data_processed <- data_processed %>%
 
 
 
-#mutate date and year!!!
+#Cleaning the date column
+data_temp <- data_processed %>%
+  mutate(fi_date = if_else(str_count(fi_date, "-") >= 2, str_replace(fi_date, "^((?:[^-]*-){2}?)", function(x) sub("-$", ".", x)), fi_date),
+         fi_date_correct = if_else(str_detect(fi_date, "^\\d{1,2}\\.\\d{1,2}\\.\\d{4}$"), format(as.Date(fi_date, format = "%d.%m.%Y"), "%d.%m.%Y"), NA_character_),
+         fi_date_wrong = if_else(is.na(fi_date_correct), fi_date, NA),
+         fi_date_month = if_else(str_detect(fi_date_wrong, "^(0?[1-9]|1[0-2])\\.\\d{4}$"), sprintf("%02d.%s", as.integer(str_extract(fi_date_wrong, "^[0-9]+")),str_extract(fi_date_wrong, "\\d{4}$")),NA),
+         fi_date_year = if_else(str_detect(fi_date_wrong, "^\\d{4}$"), fi_date_wrong, NA),
+         fi_start_date = if_else(str_detect(fi_date_wrong, "[-/]"), str_extract(fi_date_wrong, "^[^-/]+"), NA),
+         fi_start_date_correct =  if_else(str_detect(fi_start_date, "^\\d{1,2}\\.\\d{1,2}\\.\\d{4}$"), format(as.Date(fi_start_date, format = "%d.%m.%Y"), "%d.%m.%Y"), NA_character_),
+         fi_start_date_wrong =if_else(is.na(fi_start_date_correct), fi_start_date, NA),
+         fi_start_date_corrected = if_else(str_detect(fi_start_date_wrong, "^(0?[1-9]|[12][0-9]|3[01])\\.(0?[1-9]|1[0-2])\\.\\d{2}$"), str_replace(fi_start_date_wrong, "^(\\d{1,2}\\.\\d{1,2}\\.)(\\d{2})$", "\\120\\2"), NA),
+         fi_end_date = if_else(str_detect(fi_date_wrong, "[-/]"), str_extract(fi_date_wrong, "(?<=[-/]).+$"), NA),
+         fi_end_date_correct = if_else(str_detect(fi_end_date, "^\\d{1,2}\\.\\d{1,2}\\.\\d{4}$"), format(as.Date(fi_end_date, format = "%d.%m.%Y"), "%d.%m.%Y"), NA_character_),
+         fi_end_date_wrong =if_else(is.na(fi_end_date_correct), fi_end_date, NA),
+         fi_end_date_corrected = if_else(str_detect(fi_end_date_wrong, "^(0?[1-9]|[12][0-9]|3[01])\\.(0?[1-9]|1[0-2])\\.\\d{2}$"),str_replace(fi_end_date_wrong,"^(\\d{1,2}\\.\\d{1,2}\\.)(\\d{2})$","\\120\\2"),NA),
+         only_digits = as.numeric(if_else(str_detect(fi_date, "^\\d+$"), fi_date, NA)),
+         only_digits = if_else(only_digits > 36526, only_digits, NA),
+         fi_date_serial = (if_else(!is.na(only_digits), format(as.Date(only_digits, origin = "1899-12-30"), "%d.%m.%Y"), NA)),
+         only_digits = NULL,
+         fi_start_month = if_else(str_detect(fi_start_date_wrong, "^(0?[1-9]|1[0-2])\\.\\d{4}$"), sprintf("%02d", as.integer(str_extract(fi_start_date_wrong, "^[0-9]+"))), NA),
+         fi_start_year  = if_else(str_detect(fi_start_date_wrong, "^(0?[1-9]|1[0-2])\\.\\d{4}$"), str_extract(fi_start_date_wrong, "\\d{4}$"), NA),
+         fi_end_month = if_else(str_detect(fi_end_date_wrong, "^(0?[1-9]|1[0-2])\\.\\d{4}$"),sprintf("%02d", as.integer(str_extract(fi_end_date_wrong, "^[0-9]+"))), NA),
+         fi_end_year = if_else(str_detect(fi_end_date_wrong, "^(0?[1-9]|1[0-2])\\.\\d{4}$"), str_extract(fi_end_date_wrong, "\\d{4}$"), NA),
+         fi_start_corrected_fill = if_else(str_detect(fi_start_date_wrong, "^(\\d{1,2})\\.?$") &
+             (!is.na(fi_end_date_corrected) | !is.na(fi_end_date_correct)),
+           sprintf(
+             "%02d.%s.%s",
+             as.integer(str_extract(fi_start_date_wrong, "^\\d{1,2}")),
+             if_else(!is.na(fi_end_date_corrected),str_extract(fi_end_date_corrected, "(?<=\\.)\\d{1,2}(?=\\.)"),str_extract(fi_end_date_correct, "(?<=\\.)\\d{1,2}(?=\\.)")),
+             if_else(!is.na(fi_end_date_corrected), str_extract(fi_end_date_corrected, "\\d{4}$"), str_extract(fi_end_date_correct, "\\d{4}$"))), NA)
+         )
+
+
+#collapse to columns with only start and end year/month/day
+data_clean <- data_temp %>% 
+  select(-fi_date_wrong, - fi_start_date, -fi_start_date_wrong, -fi_end_date, -fi_end_date_wrong) %>% 
+  mutate(
+    start_day   = case_when(!is.na(fi_date_correct)         ~ as.integer(str_extract(fi_date_correct, "^[0-9]{1,2}")),
+                            !is.na(fi_start_date_correct)   ~ as.integer(str_extract(fi_start_date_correct, "^[0-9]{1,2}")),
+                            !is.na(fi_start_date_corrected) ~ as.integer(str_extract(fi_start_date_corrected, "^[0-9]{1,2}")),
+                            !is.na(fi_start_corrected_fill) ~ as.integer(str_extract(fi_start_corrected_fill, "^[0-9]{1,2}")),
+                            !is.na(fi_date_serial)          ~ as.integer(str_extract(fi_date_serial, "^[0-9]{1,2}")),
+                            TRUE ~ NA_integer_),
+    start_month = case_when(!is.na(fi_date_correct)         ~ as.integer(str_extract(fi_date_correct, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_start_date_correct)   ~ as.integer(str_extract(fi_start_date_correct, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_start_date_corrected) ~ as.integer(str_extract(fi_start_date_corrected, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_start_corrected_fill) ~ as.integer(str_extract(fi_start_corrected_fill, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_date_serial)          ~ as.integer(str_extract(fi_date_serial, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_date_month)           ~ as.integer(fi_date_month),
+                            !is.na(fi_start_month)          ~ as.integer(fi_start_month),
+                            TRUE ~ NA_integer_),
+    start_year  = case_when(!is.na(fi_date_correct)         ~ as.integer(str_extract(fi_date_correct, "\\d{4}$")),
+                            !is.na(fi_start_date_correct)   ~ as.integer(str_extract(fi_start_date_correct, "\\d{4}$")),
+                            !is.na(fi_start_date_corrected) ~ as.integer(str_extract(fi_start_date_corrected, "\\d{4}$")),
+                            !is.na(fi_start_corrected_fill) ~ as.integer(str_extract(fi_start_corrected_fill, "\\d{4}$")),
+                            !is.na(fi_date_serial)          ~ as.integer(str_extract(fi_date_serial, "\\d{4}$")),
+                            !is.na(fi_date_year)            ~ as.integer(fi_date_year),
+                            !is.na(fi_start_year)           ~ as.integer(fi_start_year),
+                            TRUE ~ NA_integer_),
+    end_day     = case_when(!is.na(fi_end_date_correct)    ~ as.integer(str_extract(fi_end_date_correct, "^[0-9]{1,2}")),
+                            !is.na(fi_end_date_corrected)  ~ as.integer(str_extract(fi_end_date_corrected, "^[0-9]{1,2}")),
+                            TRUE ~ NA_integer_),
+    end_month   = case_when(!is.na(fi_end_date_correct)    ~ as.integer(str_extract(fi_end_date_correct, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_end_date_corrected)  ~ as.integer(str_extract(fi_end_date_corrected, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
+                            !is.na(fi_end_month)           ~ as.integer(fi_end_month),
+                            TRUE ~ NA_integer_),
+    end_year    = case_when(!is.na(fi_end_date_correct)    ~ as.integer(str_extract(fi_end_date_correct, "\\d{4}$")),
+                            !is.na(fi_end_date_corrected)  ~ as.integer(str_extract(fi_end_date_corrected, "\\d{4}$")),
+                            !is.na(fi_end_year)            ~ as.integer(fi_end_year),
+                            TRUE ~ NA_integer_),
+  period        = case_when(!is.na(start_day) & !is.na(start_month) & !is.na(start_year) &
+                            !is.na(end_day)   & !is.na(end_month)   & !is.na(end_year) ~ 
+                                as.integer(as.Date(sprintf("%04d-%02d-%02d", end_year, end_month, end_day)) - as.Date(sprintf("%04d-%02d-%02d", start_year, start_month, start_day))),
+                            !is.na(start_day) & !is.na(start_month) & !is.na(start_year) &
+                            is.na(end_day)    & is.na(end_month)    & is.na(end_year) ~ 1,
+                            TRUE ~ NA_integer_)) %>% 
+  select(all_of(names(call_ind)), start_day, start_month, start_year, end_day, end_month, end_year, period)
+
+
+# save for ulrike    
+write_xlsx(data_clean, "2025_new_integration/output/corrected_dates.xlsx")
+
+#edit for ICES 
+new_individual_metrics <- data_clean %>% 
+  mutate(fi_date = case_when(
+    !is.na(start_day) & !is.na(start_month) & !is.na(start_year) ~ sprintf("%02d.%02d.%04d", start_day, start_month, start_year),
+    is.na(start_day) & !is.na(start_month) & !is.na(start_year) ~ sprintf("01.%02d.%04d", start_month, start_year),
+    TRUE ~ NA_character_),
+    fi_year = as.integer(start_year),
+    fi_comment = case_when(!is.na(start_day) & !is.na(start_month) & !is.na(start_year) & !is.na(period) & period > 1  ~ paste0("fi_date gives starting date of a fishing period, the period was ", period, " days long"),
+                           !is.na(start_day) & !is.na(start_month) & !is.na(start_year) & !is.na(period) & period == 1 ~ "fi_date is exact",
+                           is.na(start_day) & !is.na(start_month) & !is.na(start_year) & is.na(end_day) & is.na(end_month) ~ "Day of month is unknown and by default set to first of the month. Duration of the fishing period is unknown but was within the specified month",
+                           is.na(start_day) & !is.na(start_month) & !is.na(start_year) & is.na(end_day) & !is.na(end_month) & !is.na(end_year) ~ "fi_date gives a starting value but day of month is unknown and by default set to first of the month. Duration of the fishing period is unknown but extends at least to the next month",
+                           is.na(start_day) & is.na(start_month) & !is.na(start_year) ~ "Only year of catch is known")
+                        ) %>% 
+    select(all_of(names(call_ind)))
+    
+
+
+
+
+#write for ICES   
+write_xlsx(new_individual_metrics, "2025_new_integration/output/new_individual_metrics.xlsx")
+
+
+
 #check outliers!
 
 
@@ -208,7 +322,7 @@ sampling_info <- sampling_info %>%
 
 #####------------------------- 5. PRINT xlsx -------------------------########################
 # write the individual metrics and sampling info to an xlsx file
-write_xlsx(new_individual_metrics, "new_individual_metrics.xlsx") 
+write_xlsx(data_processed, "new_individual_metrics.xlsx") 
 write_xlsx(sampling_info, "sampling_info.xlsx")
 # print the new_individual_metrics and sampling_info to the console
 
