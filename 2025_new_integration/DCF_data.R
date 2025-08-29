@@ -99,6 +99,15 @@ data <- data %>% mutate(
   
 )
 
+#add consistent coordinates for Kessin monitoring (LFA)
+data <- data %>% mutate(
+  fisa_x_4326 = case_when(str_detect(series, regex("Landesforschungsanstalt", ignore_case = TRUE)) ~ 12.176,
+                          TRUE ~ fisa_x_4326),
+  fisa_y_4326 = case_when(str_detect(series, regex("Landesforschungsanstalt", ignore_case = TRUE)) ~ 54.062,
+                          TRUE ~ fisa_y_4326),
+  
+)
+
 #get data types for Ulrike
 types <- data.frame(Column = names(data), DataType = sapply(data, class))
 
