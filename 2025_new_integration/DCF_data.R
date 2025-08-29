@@ -309,6 +309,7 @@ sampling_info <- data_renamed %>%
     habitat == "M" ~ "MO",                                # recode M as MO
     TRUE ~ habitat),                                        # otherwise keep original
 sai_emu_nameshort = ifelse(is.na(fge), NA, substr(fge, 1, 4)),
+sai_emu_nameshort = paste0("DE_",sai_emu_nameshort),
 sai_name = case_when(
   is.na(fge) ~ paste0("DE_", "other_", habitat),
   is.na(habitat) ~ paste0("DE_", substr(fge, 1, 4), "_other"),
@@ -319,9 +320,9 @@ sai_name = case_when(
     sai_hty_code = unique(habitat)) %>% 
   mutate(
     sai_area_division = case_when(
-      sai_emu_nameshort %in% c("DE_Elbe", "DE_Ems", "DE_Eider", "DE_Rhein", "DE_Weser") ~ "27.4.b",
-      sai_emu_nameshort %in% c("DE_Oder", "DE_Warno") ~ "27.3.d",
-      sai_emu_nameshort == "DE_Schle" ~ "27.3.b, c",
+      sai_emu_nameshort %in% c("DE_Elbe", "DE_Ems", "DE_Eide", "DE_Rhei", "DE_Wese") ~ "27.4.b",
+      sai_emu_nameshort %in% c("DE_Oder", "DE_Warn") ~ "27.3.d",
+      sai_emu_nameshort == "DE_Schl" ~ "27.3.b, c",
       TRUE ~ NA),
     sai_samplingobjective = "DCF",
     sai_samplingstrategy = case_when(
