@@ -14,7 +14,7 @@ DCF_file <- "2025_new_integration/Master_2025_08_27_Aal_DCF.xlsx" #without coord
 DCF_file1 <- "2025_new_integration/Master_2025_05_28_Aal_DCF1.xlsx" #with coordinates
 Balance_data <- "2025_new_integration/eel_sex_data.xlsx"
 
-#####---------------------- 1. load/install libraries ----------------------------#####
+################################ 1. load/install libraries ###################################
 
 
 # define libraries needed
@@ -35,7 +35,7 @@ invisible(lapply(libs, library, character.only = T))
 mkdir( "2025_new_integration/output")
 
 
-#####-------------------- 2. LOAD TO  BE USED FOR INDIVIDUAL METRICS -------------------##### 
+################################# 2. LOAD TO  BE USED FOR INDIVIDUAL METRICS ################################### 
 
 # extract data from the master sheet of the DCF file
 data <- read_excel(DCF_file, 
@@ -82,13 +82,22 @@ data1 <- data1 %>% mutate(fisa_x_4326 = dms_to_dd(fisa_x_4326),
                           fisa_y_4326 = dms_to_dd(fisa_y_4326))
 
 
-#left join coordinates from data1 by Lfd. Nr.
-data <- left_join(data, data1 %>% select("Lfd. Nr.", "fisa_x_4326", "fisa_y_4326"), by = c("Lfd. Nr."))
+#left join coordinates from data1 by Lfd. Nr. & add exact coordinates for balance
+data <- left_join(data, data1 %>% select("Lfd. Nr.", "fisa_x_4326", "fisa_y_4326"), by = c("Lfd. Nr.")) 
 
 #left_join sex data from Balance
 data <- left_join(data, Balance %>% select("Balance ID", "bal_sex"), by = c("Extra ID (Polen ID, Florian Id)" = "Balance ID" )) %>% 
   mutate(Sex = ifelse(!is.na(bal_sex), bal_sex, Sex),
          bal_sex = NULL)
+
+#add exact coordinates for balance
+data <- data %>% mutate(
+  fisa_x_4326 = case_when(str_detect(series, regex("balance", ignore_case = TRUE)) ~ 7.399,
+                          TRUE ~ fisa_x_4326),
+  fisa_y_4326 = case_when(str_detect(series, regex("balance", ignore_case = TRUE)) ~ 53.237,
+                          TRUE ~ fisa_y_4326),
+  
+)
 
 #get data types for Ulrike
 types <- data.frame(Column = names(data), DataType = sapply(data, class))
@@ -97,11 +106,12 @@ types <- data.frame(Column = names(data), DataType = sapply(data, class))
 write_xlsx(data, "2025_new_integration/output/Master_edited.xlsx")
 write_xlsx(types, "2025_new_integration/output/Master_types.xlsx")
 
+
 ################################## 3. CREATE NEW INDIVIDUAL METRIC TABLE ##################################
 
 #create a new data frame called data_processed with the individual metrics needed for further processing
 # edit the original data from Master to ease programming (very horrible headers!)
-data_processed <- data %>%
+data_renamed <- data %>%
   rename(fi_id_cou = "Lfd. Nr.",
          fge = "FGE",
          habitat = "Habitat",
@@ -119,7 +129,7 @@ data_processed <- data %>%
          eyediam_meanmm = "eye_diam_avg") 
 
 #edit columns to match data call
-data_processed <- data_processed %>% 
+data_processed <- data_renamed %>% 
   mutate(habitat = case_when(
           str_detect(series, "(?i)balance") ~ "T",
           habitat %in% c("R", "L", "F") ~ "F",                  # recode R, L, F as F
@@ -228,7 +238,7 @@ data_clean <- data_temp %>%
                             !is.na(fi_start_date_corrected) ~ as.integer(str_extract(fi_start_date_corrected, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
                             !is.na(fi_start_corrected_fill) ~ as.integer(str_extract(fi_start_corrected_fill, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
                             !is.na(fi_date_serial)          ~ as.integer(str_extract(fi_date_serial, "(?<=^\\d{1,2}\\.)\\d{1,2}")),
-                            !is.na(fi_date_month)           ~ as.integer(fi_date_month),
+                            !is.na(fi_date_month) ~ as.integer(str_extract(fi_date_month, "^\\d{2}")),
                             !is.na(fi_start_month)          ~ as.integer(fi_start_month),
                             TRUE ~ NA_integer_),
     start_year  = case_when(!is.na(fi_date_correct)         ~ as.integer(str_extract(fi_date_correct, "\\d{4}$")),
@@ -236,6 +246,7 @@ data_clean <- data_temp %>%
                             !is.na(fi_start_date_corrected) ~ as.integer(str_extract(fi_start_date_corrected, "\\d{4}$")),
                             !is.na(fi_start_corrected_fill) ~ as.integer(str_extract(fi_start_corrected_fill, "\\d{4}$")),
                             !is.na(fi_date_serial)          ~ as.integer(str_extract(fi_date_serial, "\\d{4}$")),
+                            !is.na(fi_date_month) ~ as.integer(str_extract(fi_date_month, "(?<=\\.)\\d{4}")),
                             !is.na(fi_date_year)            ~ as.integer(fi_date_year),
                             !is.na(fi_start_year)           ~ as.integer(fi_start_year),
                             TRUE ~ NA_integer_),
@@ -280,49 +291,52 @@ new_individual_metrics <- data_clean %>%
 
 
 
-
 #write for ICES   
 write_xlsx(new_individual_metrics, "2025_new_integration/output/new_individual_metrics.xlsx")
 
 
 
-#check outliers!
 
 
+########################################## 4. CREATE SAMPLING INFO TABLE #######################################
 
-######################## ----------------- 5. CREATE SAMPLING INFO TABLE -------------------########################
-
-# create sampling_info
-sampling_info <- data_processed %>% 
+#create sampling info
+sampling_info <- data_renamed %>%
+  mutate(
+    habitat = case_when(
+    str_detect(series, "(?i)balance") ~ "T",
+    habitat %in% c("R", "L", "F") ~ "F",                  # recode R, L, F as F
+    habitat == "M" ~ "MO",                                # recode M as MO
+    TRUE ~ habitat),                                        # otherwise keep original
+sai_emu_nameshort = ifelse(is.na(fge), NA, substr(fge, 1, 4)),
+sai_name = case_when(
+  is.na(fge) ~ paste0("DE_", "other_", habitat),
+  is.na(habitat) ~ paste0("DE_", substr(fge, 1, 4), "_other"),
+  TRUE ~ paste0("DE_", substr(fge, 1, 4), "_", habitat))) %>% 
   group_by(sai_name) %>% 
+  summarize(
+    sai_emu_nameshort = unique(sai_emu_nameshort),
+    sai_hty_code = unique(habitat)) %>% 
   mutate(
     sai_area_division = case_when(
-      is.na(sai_emu_nameshort) ~ NA_character_, #keeps column type consistent (avoids warnings)
       sai_emu_nameshort %in% c("DE_Elbe", "DE_Ems", "DE_Eider", "DE_Rhein", "DE_Weser") ~ "27.4.b",
       sai_emu_nameshort %in% c("DE_Oder", "DE_Warno") ~ "27.3.d",
       sai_emu_nameshort == "DE_Schle" ~ "27.3.b, c",
-      TRUE ~ NA_character_
-    ),
-  habitat = unique(habitat)) %>% 
-  summarise(sai_name = unique(sai_name),
-            #sai_emu_nameshort = unique(sai_emu_nameshort),
-            sai_area_division = unique(sai_area_division),
-            sai_hty_code = unique(habitat),
-            sai_samplingobjective = "DCF",
-            sai_protocol = "",
-            sai_samplingstrategy = "",
-            sai_qal_id = "",
-            sai_comment = "",
-            )
+      TRUE ~ NA),
+    sai_samplingobjective = "DCF",
+    sai_samplingstrategy = case_when(
+      sai_emu_nameshort == "Warn" ~ "scientific sampling & commercial fisheries",
+      TRUE ~ "commercial fisheries"),
+    sai_protocol = case_when(
+      sai_emu_nameshort == "Warn" ~ "Fish mostly from scientific monitoring executed in the river Warnow",
+      TRUE ~ "mostly commercial fisheries, some individuals potentially from other survey"),
+    sai_qal_id = 2,
+    sai_comment = "Summarizes all eels sampled in the respective habitat and EMU under German DCF, not necessarily representative",
+    sai_lastupdate = "",
+    sai_dts_datasource = "") %>% 
+  select(all_of(names(call_samp)))
 
-#change others in habitat to NA in the sai_hty_code 
-sampling_info <- sampling_info %>%
-  mutate(sai_hty_code = ifelse(sai_hty_code == "other", NA, sai_hty_code))
+# write the  sampling info to an xlsx file
+write_xlsx(sampling_info, "2025_new_integration/output/sampling_info.xlsx")
 
-
-#####------------------------- 5. PRINT xlsx -------------------------########################
-# write the individual metrics and sampling info to an xlsx file
-write_xlsx(data_processed, "new_individual_metrics.xlsx") 
-write_xlsx(sampling_info, "sampling_info.xlsx")
-# print the new_individual_metrics and sampling_info to the console
 
