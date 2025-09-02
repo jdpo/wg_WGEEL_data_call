@@ -52,6 +52,9 @@ call_samp <-  read_excel(annex_path,
 Balance <-  read_excel(Balance_data, 
                          sheet = "data", col_names = TRUE, guess_max = 15000) %>% rename(bal_sex = "Sex")
 
+locations <-  read_excel("2025_new_integration/update_locations.xlsx", 
+                       col_names = TRUE, guess_max = 15000)
+
 
 # replace all excel error messages and placeholders for NA with NA
 data <- data %>% mutate(across(everything(), ~ replace(., .%in% c("NA", "#WERT!", "#NV", "", "#BEZUG!", "-"), NA)))
@@ -98,22 +101,6 @@ data <- data %>% mutate(
                           TRUE ~ fisa_y_4326),
   
 )
-
-#add consistent coordinates for Kessin monitoring (LFA)
-data <- data %>% mutate(
-  fisa_x_4326 = case_when(str_detect(series, regex("Landesforschungsanstalt", ignore_case = TRUE)) ~ 12.176,
-                          TRUE ~ fisa_x_4326),
-  fisa_y_4326 = case_when(str_detect(series, regex("Landesforschungsanstalt", ignore_case = TRUE)) ~ 54.062,
-                          TRUE ~ fisa_y_4326),
-  
-)
-
-#get data types for Ulrike
-types <- data.frame(Column = names(data), DataType = sapply(data, class))
-
-#write new tables for Ulrike
-write_xlsx(data, "2025_new_integration/output/Master_edited.xlsx")
-write_xlsx(types, "2025_new_integration/output/Master_types.xlsx")
 
 
 ################################## 3. CREATE NEW INDIVIDUAL METRIC TABLE ##################################
@@ -194,8 +181,7 @@ data_processed <- data_renamed %>%
          "anguillicola_presence_(1=present,0=absent)" = anguillicola_presence,
          "method_anguillicola_(1=stereomicroscope,0=visual_obs)" = method_anguillicola,
          "evex_presence_(1=present,0=absent)" = evex_presence,
-         "hva_presence_(1=present,0=absent)" = hva_presence) %>% 
-  select(all_of(names(call_ind)))
+         "hva_presence_(1=present,0=absent)" = hva_presence) 
 
 
 
@@ -233,8 +219,7 @@ data_temp <- data_processed %>%
 
 
 #collapse to columns with only start and end year/month/day
-data_clean <- data_temp %>% 
-  select(-fi_date_wrong, - fi_start_date, -fi_start_date_wrong, -fi_end_date, -fi_end_date_wrong) %>% 
+data_temp <- data_temp %>% 
   mutate(
     start_day   = case_when(!is.na(fi_date_correct)         ~ as.integer(str_extract(fi_date_correct, "^[0-9]{1,2}")),
                             !is.na(fi_start_date_correct)   ~ as.integer(str_extract(fi_start_date_correct, "^[0-9]{1,2}")),
@@ -276,14 +261,41 @@ data_clean <- data_temp %>%
                             !is.na(start_day) & !is.na(start_month) & !is.na(start_year) &
                             is.na(end_day)    & is.na(end_month)    & is.na(end_year) ~ 1,
                             TRUE ~ NA_integer_)) %>% 
-  select(all_of(names(call_ind)), start_day, start_month, start_year, end_day, end_month, end_year, period)
+  select(-c(fi_date_correct:fi_start_corrected_fill))
 
+#write corrected table
+write_xlsx(data_temp, "2025_new_integration/output/corrected_dates_1.xlsx")
+
+#update locations for Warnow
+data_temp <- data_temp %>% 
+  rename(location = "Fangort bzw. Strom km") %>%
+  left_join(locations %>% select(location, habitat_new, true_name, subdivision, fisa_x, fisa_y), by = "location") %>% 
+  mutate(
+    location = if_else(!is.na(true_name), true_name, NA),
+    fisa_x_4326 = if_else(!is.na(fisa_x), fisa_x, NA),
+    fisa_y_4326 = if_else(!is.na(fisa_y), fisa_y, NA),
+    habitat = if_else(!is.na(habitat_new), habitat_new, NA),
+  ) %>% 
+  select(-true_name, -fisa_x, -fisa_y)
+
+#write corrected table
+write_xlsx(data_temp, "2025_new_integration/output/corrected_location_2.xlsx")
+
+# extract Warnow data for validation of subdivision
+check_locations <- data_temp %>% 
+  filter(sai_emu_nameshort != "Warn") %>% 
+  distinct(sai_emu_nameshort, location, fisa_x_4326, fisa_y_4326, habitat) %>% 
+  mutate(subdivision = "",
+         true_name = "",
+         fisa_x = "",
+         fisa_y = "") %>% 
+  arrange(sai_emu_nameshort, location)
 
 # save for ulrike    
-write_xlsx(data_clean, "2025_new_integration/output/corrected_dates.xlsx")
+write_xlsx(check_locations, "2025_new_integration/output/check_locations.xlsx")
 
-#edit for ICES 
-new_individual_metrics <- data_clean %>% 
+#edit for ICES datacall
+new_individual_metrics <- data_temp %>% 
   mutate(fi_date = case_when(
     !is.na(start_day) & !is.na(start_month) & !is.na(start_year) ~ sprintf("%02d.%02d.%04d", start_day, start_month, start_year),
     is.na(start_day) & !is.na(start_month) & !is.na(start_year) ~ sprintf("01.%02d.%04d", start_month, start_year),
