@@ -108,7 +108,8 @@ data <- data %>% mutate(
 #create a new data frame called data_processed with the individual metrics needed for further processing
 # edit the original data from Master to ease programming (very horrible headers!)
 data_renamed <- data %>%
-  rename(fi_id_cou = "Lfd. Nr.",
+  rename(location = "Fangort bzw. Strom km",
+         fi_id_cou = "Lfd. Nr.",
          fge = "FGE",
          habitat = "Habitat",
          fi_year = "Fangjahr",
@@ -127,15 +128,16 @@ data_renamed <- data %>%
 #edit columns to match data call
 data_processed <- data_renamed %>% 
   mutate(habitat = case_when(
-          str_detect(series, "(?i)balance") ~ "T",
-          habitat %in% c("R", "L", "F") ~ "F",                  # recode R, L, F as F
-          habitat == "M" ~ "MO",                                # recode M as MO
-          TRUE ~ habitat),                                        # otherwise keep original
+            habitat == "L" ~ "F",
+            habitat == "M" ~ "MO",
+            str_detect(series, "(?i)balance") ~ "R",
+            location == "Ems" & gear %in% c("Hamen", "Pfahlhamen 7x3", "Pfahl-Hamen") ~ "R",
+            TRUE ~ habitat),
+         location = case_when(                                        #change all balance eels to km18 & R to correctly match during left_join
+           str_detect(series, "(?i)balance") ~ "Ems km 18- km 26",
+           location == "Ems" & gear %in% c("Hamen", "Pfahlhamen 7x3", "Pfahl-Hamen") ~ "Ems km 18- km 26",
+           TRUE ~ location),
          sai_emu_nameshort = ifelse(is.na(fge), NA, substr(fge, 1, 4)),
-         sai_name = case_when(
-           is.na(fge) ~ paste0("DE_", "other_", habitat),
-           is.na(habitat) ~ paste0("DE_", substr(fge, 1, 4), "_other"),
-           TRUE ~ paste0("DE_", substr(fge, 1, 4), "_", habitat)),
          fi_lfs_code = case_when(
            stage %in% c(1, 2, 3) ~ "Y",
            stage %in% c(4, 5, 6) ~ "S",
@@ -266,15 +268,18 @@ data_temp <- data_temp %>%
 #write corrected table
 write_xlsx(data_temp, "2025_new_integration/output/corrected_dates_1.xlsx")
 
-#update locations for Warnow
+
+#update locations
 data_temp <- data_temp %>% 
-  rename(location = "Fangort bzw. Strom km") %>%
-  left_join(locations %>% select(location, habitat_new, true_name, subdivision, fisa_x, fisa_y), by = "location") %>% 
+  left_join(locations %>% select(location, habitat, habitat_new, true_name, subdivision, fisa_x, fisa_y), by = c("location", "habitat")) %>% 
   mutate(
     location = if_else(!is.na(true_name), true_name, NA),
     fisa_x_4326 = if_else(!is.na(fisa_x), fisa_x, NA),
     fisa_y_4326 = if_else(!is.na(fisa_y), fisa_y, NA),
     habitat = if_else(!is.na(habitat_new), habitat_new, NA),
+    sai_name = case_when(
+      is.na(habitat) ~ paste0("DE_", sai_emu_nameshort, "_noHABITAT_", gsub("[^A-Za-z0-9]", "", subdivision)),
+      TRUE ~ paste0("DE_", sai_emu_nameshort, "_", habitat, "_", gsub("[^A-Za-z0-9]", "", subdivision)))
   ) %>% 
   select(-true_name, -fisa_x, -fisa_y)
 
@@ -283,12 +288,7 @@ write_xlsx(data_temp, "2025_new_integration/output/corrected_location_2.xlsx")
 
 # extract Warnow data for validation of subdivision
 check_locations <- data_temp %>% 
-  filter(sai_emu_nameshort != "Warn") %>% 
-  distinct(sai_emu_nameshort, location, fisa_x_4326, fisa_y_4326, habitat) %>% 
-  mutate(subdivision = "",
-         true_name = "",
-         fisa_x = "",
-         fisa_y = "") %>% 
+  distinct(sai_emu_nameshort, location, fisa_x_4326, fisa_y_4326, habitat, subdivision) %>% 
   arrange(sai_emu_nameshort, location)
 
 # save for ulrike    
@@ -322,38 +322,22 @@ write_xlsx(new_individual_metrics, "2025_new_integration/output/new_individual_m
 ########################################## 4. CREATE SAMPLING INFO TABLE #######################################
 
 #create sampling info
-sampling_info <- data_renamed %>%
-  mutate(
-    habitat = case_when(
-    str_detect(series, "(?i)balance") ~ "T",
-    habitat %in% c("R", "L", "F") ~ "F",                  # recode R, L, F as F
-    habitat == "M" ~ "MO",                                # recode M as MO
-    TRUE ~ habitat),                                        # otherwise keep original
-sai_emu_nameshort = ifelse(is.na(fge), NA, substr(fge, 1, 4)),
-sai_emu_nameshort = paste0("DE_",sai_emu_nameshort),
-sai_name = case_when(
-  is.na(fge) ~ paste0("DE_", "other_", habitat),
-  is.na(habitat) ~ paste0("DE_", substr(fge, 1, 4), "_other"),
-  TRUE ~ paste0("DE_", substr(fge, 1, 4), "_", habitat))) %>% 
+sampling_info <- data_temp %>%
   group_by(sai_name) %>% 
-  summarize(
+  reframe(
     sai_emu_nameshort = unique(sai_emu_nameshort),
-    sai_hty_code = unique(habitat)) %>% 
+    sai_hty_code = unique(habitat),
+    sai_area_division = unique(subdivision)) %>% 
   mutate(
-    sai_area_division = case_when(
-      sai_emu_nameshort %in% c("DE_Elbe", "DE_Ems", "DE_Eide", "DE_Rhei", "DE_Wese") ~ "27.4.b",
-      sai_emu_nameshort %in% c("DE_Oder", "DE_Warn") ~ "27.3.d",
-      sai_emu_nameshort == "DE_Schl" ~ "27.3.b, c",
-      TRUE ~ NA),
     sai_samplingobjective = "DCF",
     sai_samplingstrategy = case_when(
       sai_emu_nameshort == "Warn" ~ "scientific sampling & commercial fisheries",
       TRUE ~ "commercial fisheries"),
     sai_protocol = case_when(
-      sai_emu_nameshort == "Warn" ~ "Fish mostly from scientific monitoring executed in the river Warnow",
+      sai_emu_nameshort == "Warn" ~ "Fish mostly from scientific monitoring executed in the river Warnow plus eels bought from commercial fishermen",
       TRUE ~ "mostly commercial fisheries, some individuals potentially from other survey"),
     sai_qal_id = 2,
-    sai_comment = "Summarizes all eels sampled in the respective habitat and EMU under German DCF, not necessarily representative",
+    sai_comment = "Summarizes all eels sampled in the German DCF in respective habitat and EMU, seperated by drainage area. Not necessarily representative",
     sai_lastupdate = "",
     sai_dts_datasource = "") %>% 
   select(all_of(names(call_samp)))
@@ -362,3 +346,27 @@ sai_name = case_when(
 write_xlsx(sampling_info, "2025_new_integration/output/sampling_info.xlsx")
 
 
+# quick overview
+sampling_check <- data_temp %>%
+  group_by(sai_name) %>% 
+  reframe(
+    sai_emu_nameshort = unique(sai_emu_nameshort),
+    sai_hty_code = unique(habitat),
+    sai_area_division = unique(subdivision),
+    no_ind = n()) %>% 
+  mutate(
+    sai_samplingobjective = "DCF",
+    sai_samplingstrategy = case_when(
+      sai_emu_nameshort == "Warn" ~ "scientific sampling & commercial fisheries",
+      TRUE ~ "commercial fisheries"),
+    sai_protocol = case_when(
+      sai_emu_nameshort == "Warn" ~ "Fish mostly from scientific monitoring in the river Warnow, plus eels bought from commercial fishermen",
+      TRUE ~ "mostly commercial fisheries, some individuals potentially from other surveys"),
+    sai_qal_id = 2,
+    sai_comment = "Summarizes all eels sampled in the German DCF in respective habitat, EMU and drainage subdivision. Not necessarily representative",
+    sai_lastupdate = "",
+    sai_dts_datasource = "") %>% 
+  select(all_of(names(call_samp)), no_ind, -sai_lastupdate, -sai_dts_datasource, -sai_qal_id)
+
+# write the  quick_check info to an xlsx file
+write_xlsx(sampling_check, "2025_new_integration/output/sampling_check.xlsx")
